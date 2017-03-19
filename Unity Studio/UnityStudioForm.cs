@@ -2985,7 +2985,7 @@ namespace Unity_Studio
                         writer.Flush();
 
                         var bmp = DDSDataToBMP(ms.ToArray());
-                        bmp.RotateFlip(RotateFlipType.Rotate180FlipNone);
+                        bmp.RotateFlip(RotateFlipType.Rotate180FlipX);
                         bmp.Save(exportFilename, ImageFormat.Png);
                     }
                     break;
