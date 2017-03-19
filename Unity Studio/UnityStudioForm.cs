@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Drawing.Imaging;
 using Tao.DevIl;
 using System.Web.Script.Serialization;
+using Newtonsoft.Json;
 
 
 /*TODO
@@ -1110,7 +1111,7 @@ namespace Unity_Studio
                             m_Texture2D.image_data.CopyTo(imageBuffer, 128);
 
                             imageTexture = DDSDataToBMP(imageBuffer);
-                            imageTexture.RotateFlip(RotateFlipType.RotateNoneFlipY);
+                            imageTexture.RotateFlip(RotateFlipType.Rotate180FlipNone);
                             previewPanel.BackgroundImage = imageTexture;
                             previewPanel.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
                         }
@@ -2806,8 +2807,11 @@ namespace Unity_Studio
                             switch (asset.Type2)
                             {
                                 case 28:
+                                    //if (!ExportFileExists(exportpath + asset.Text + asset.extension, asset.TypeString))
+                                    //{ ExportTexture(new Texture2D(asset, true), exportpath + asset.Text + asset.extension); exportedCount++; }
+                                    //break;
                                     if (!ExportFileExists(exportpath + asset.Text + asset.extension, asset.TypeString))
-                                    { ExportTexture(new Texture2D(asset, true), exportpath + asset.Text + asset.extension); exportedCount++; }
+                                    { ExportTexturePng(new Texture2D(asset, true), exportpath + asset.Text + ".png"); exportedCount++; }
                                     break;
                                 case 83:
                                     if (!ExportFileExists(exportpath + asset.Text + asset.extension, asset.TypeString))
@@ -2937,7 +2941,89 @@ namespace Unity_Studio
                     break;
             }
         }
-        
+
+
+        private void ExportTexturePng(Texture2D m_Texture2D, string exportFilename)
+        {
+            switch (m_Texture2D.m_TextureFormat)
+            {
+                #region DDS
+                case 1: //Alpha8
+                case 2: //A4R4G4B4
+                case 3: //B8G8R8 //confirmed on X360, iOS //PS3 unsure
+                case 4: //G8R8A8B8 //confirmed on X360, iOS
+                case 5: //B8G8R8A8 //confirmed on X360, PS3, Web, iOS
+                case 7: //R5G6B5 //confirmed switched on X360; confirmed on iOS
+                case 10: //DXT1
+                case 12: //DXT5
+                case 13: //R4G4B4A4, iOS (only?)
+                    using (var ms = new MemoryStream())
+                    using (var writer = new BinaryWriter(ms))
+                    {
+                        writer.Write(0x20534444);
+                        writer.Write(0x7C);
+                        writer.Write(m_Texture2D.dwFlags);
+                        writer.Write(m_Texture2D.m_Height);
+                        writer.Write(m_Texture2D.m_Width);
+                        writer.Write(m_Texture2D.dwPitchOrLinearSize); //should be main tex size without mips);
+                        writer.Write((int)0); //dwDepth not implemented
+                        writer.Write(m_Texture2D.dwMipMapCount);
+                        writer.Write(new byte[44]); //dwReserved1[11]
+                        writer.Write(m_Texture2D.dwSize);
+                        writer.Write(m_Texture2D.dwFlags2);
+                        writer.Write(m_Texture2D.dwFourCC);
+                        writer.Write(m_Texture2D.dwRGBBitCount);
+                        writer.Write(m_Texture2D.dwRBitMask);
+                        writer.Write(m_Texture2D.dwGBitMask);
+                        writer.Write(m_Texture2D.dwBBitMask);
+                        writer.Write(m_Texture2D.dwABitMask);
+                        writer.Write(m_Texture2D.dwCaps);
+                        writer.Write(m_Texture2D.dwCaps2);
+                        writer.Write(new byte[12]); //dwCaps3&4 & dwReserved2
+
+                        writer.Write(m_Texture2D.image_data);
+                        writer.Flush();
+
+                        var bmp = DDSDataToBMP(ms.ToArray());
+                        bmp.RotateFlip(RotateFlipType.Rotate180FlipNone);
+                        bmp.Save(exportFilename, ImageFormat.Png);
+                    }
+                    break;
+                #endregion
+                #region PVR
+                case 30: //PVRTC_RGB2
+                case 31: //PVRTC_RGBA2
+                case 32: //PVRTC_RGB4
+                case 33: //PVRTC_RGBA4
+                case 34: //ETC_RGB4
+                    using (BinaryWriter writer = new BinaryWriter(File.Open(exportFilename, FileMode.Create)))
+                    {
+                        writer.Write(m_Texture2D.pvrVersion);
+                        writer.Write(m_Texture2D.pvrFlags);
+                        writer.Write(m_Texture2D.pvrPixelFormat);
+                        writer.Write(m_Texture2D.pvrColourSpace);
+                        writer.Write(m_Texture2D.pvrChannelType);
+                        writer.Write(m_Texture2D.m_Height);
+                        writer.Write(m_Texture2D.m_Width);
+                        writer.Write(m_Texture2D.pvrDepth);
+                        writer.Write(m_Texture2D.pvrNumSurfaces);
+                        writer.Write(m_Texture2D.pvrNumFaces);
+                        writer.Write(m_Texture2D.dwMipMapCount);
+                        writer.Write(m_Texture2D.pvrMetaDataSize);
+
+                        writer.Write(m_Texture2D.image_data);
+                        writer.Close();
+                    }
+                    break;
+                #endregion
+                case 28: //DXT1 Crunched
+                case 29: //DXT1 Crunched
+                default:
+                    
+                    break;
+            }
+        }
+
         private void ExportAudioClip(AudioClip m_AudioClip, string exportFilename)
         {
             using (BinaryWriter writer = new BinaryWriter(File.Open(exportFilename, FileMode.Create)))
