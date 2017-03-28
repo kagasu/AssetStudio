@@ -8,12 +8,15 @@ using System.Text.RegularExpressions;
 using System.Drawing.Imaging;
 using System.Web.Script.Serialization;
 using ManagedFbx;
-
+using Newtonsoft.Json;
 
 namespace Unity_Studio
 {
     internal static class UnityStudio
     {
+        [DllImport("UABEWrap.dll")]
+        private static extern void GetFilePath(StringBuilder file, Int64 id, StringBuilder str);
+
         public static List<string> unityFiles = new List<string>(); //files to load
         public static HashSet<string> unityFilesHash = new HashSet<string>(); //improve performance
         public static List<AssetsFile> assetsfileList = new List<AssetsFile>(); //loaded files
@@ -36,7 +39,7 @@ namespace Unity_Studio
         public static Action ProgressBarPerformStep;
         public static Action<string> StatusStripUpdate;
         public static Action<int> ProgressBarMaximumAdd;
-
+        
         public static void LoadAssetsFile(string fileName)
         {
             //var loadedAssetsFile = assetsfileList.Find(aFile => aFile.filePath == fileName);
@@ -255,10 +258,11 @@ namespace Unity_Studio
                     StatusStripUpdate("Building asset list from " + Path.GetFileName(assetsFile.filePath));
 
                     string fileID = i.ToString(fileIDfmt);
-
+                    
                     foreach (var asset in assetsFile.preloadTable.Values)
                     {
                         asset.uniqueID = fileID + asset.uniqueID;
+
                         var exportable = false;
                         switch (asset.Type2)
                         {
@@ -283,7 +287,17 @@ namespace Unity_Studio
                                 }
                             case 28: //Texture2D
                                 {
+                                    Console.WriteLine($"texture2D : {asset}");
                                     Texture2D m_Texture2D = new Texture2D(asset, false);
+                                    Console.WriteLine($"texture2D path: {asset.m_PathID}");
+                                    var filePath = new StringBuilder();
+                                    filePath.Append(assetsFile.filePath);
+                                    var sb = new StringBuilder(1024);
+                                    GetFilePath(filePath, asset.m_PathID, sb);
+
+                                    asset.Text = sb.ToString();
+
+                                    Console.WriteLine($"filePath: {sb.ToString()}");
                                     exportable = true;
                                     break;
                                 }
@@ -348,6 +362,16 @@ namespace Unity_Studio
                                     }
                                     break;
                                 }
+                            case 142: // Asset Bundle
+                                // debug
+                                var sourceFile = asset.sourceFile;
+                                sourceFile.a_Stream.Position = asset.Offset;
+                                var stream = sourceFile.a_Stream;
+
+                                stream.ReadInt32();
+                                stream.ReadInt32();
+                                Console.WriteLine($"xxxx: {(stream.ReadInt32())}");
+                                break;
                         }
                         if (!exportable && displayAll)
                         {
@@ -420,6 +444,7 @@ namespace Unity_Studio
                     {
                         fileNode.Text += " (no children)";
                     }
+                    Console.WriteLine($"aaaaagx: {fileNode.Name}, {fileNode.m_Name}");
                     fileNodes.Add(fileNode);
                 }
 

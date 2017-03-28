@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.26228.9
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity Studio", "Unity Studio\Unity Studio.csproj", "{24551E2D-E9B6-4CD6-8F2A-D9F4A13E7853}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UABEWrap", "UABEWrap\UABEWrap.vcxproj", "{943BB8A3-08AD-47C4-B102-B5D0B88E6443}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,14 @@ Global
 		{24551E2D-E9B6-4CD6-8F2A-D9F4A13E7853}.Release|x64.Build.0 = Release|x64
 		{24551E2D-E9B6-4CD6-8F2A-D9F4A13E7853}.Release|x86.ActiveCfg = Release|x86
 		{24551E2D-E9B6-4CD6-8F2A-D9F4A13E7853}.Release|x86.Build.0 = Release|x86
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Debug|x64.ActiveCfg = Debug|x64
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Debug|x64.Build.0 = Debug|x64
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Debug|x86.ActiveCfg = Debug|Win32
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Debug|x86.Build.0 = Debug|Win32
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Release|x64.ActiveCfg = Release|x64
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Release|x64.Build.0 = Release|x64
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Release|x86.ActiveCfg = Release|Win32
+		{943BB8A3-08AD-47C4-B102-B5D0B88E6443}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

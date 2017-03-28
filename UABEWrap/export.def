@@ -1,0 +1,4 @@
+EXPORTS 
+	MyAssetsReaderFromFile
+	GetAssetTypeTemplateField
+	GetFilePath

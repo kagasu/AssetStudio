@@ -151,9 +151,10 @@ namespace Unity_Studio
             //if (memFile != null) { Stream = new EndianStream(memFile, endianType); }
             //else { Stream = new EndianStream(File.OpenRead(fileName), endianType); }
             a_Stream = fileStream;
-
+            
             filePath = fullName;
             fileName = Path.GetFileName(fullName);
+            Console.WriteLine($"filename: {fullName}");
             int tableSize = a_Stream.ReadInt32();
             int dataEnd = a_Stream.ReadInt32();
             fileGen = a_Stream.ReadInt32();
@@ -308,6 +309,12 @@ namespace Unity_Studio
                     asset.TypeString = "Unknown Type " + asset.Type2;
                 }
 
+                // debug
+                Console.WriteLine(asset.TypeString);
+                //if (asset.TypeString == "AssetBundle")
+                if (asset.TypeString == "Texture2D")
+                {
+                }
                 asset.uniqueID = i.ToString(assetIDfmt);
 
                 asset.sourceFile = this;
