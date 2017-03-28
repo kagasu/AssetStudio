@@ -243,6 +243,16 @@ namespace Unity_Studio
             return extractedCount;
         }
 
+        private static void SetOriginalPathName(AssetsFile assetsFile, AssetPreloadData asset)
+        {
+            var filePath = new StringBuilder();
+            filePath.Append(assetsFile.filePath);
+            var sb = new StringBuilder(1024);
+            GetFilePath(filePath, asset.m_PathID, sb);
+
+            asset.Text = sb.ToString();
+        }
+
         public static void BuildAssetStructures(bool loadAssetsMenuItem, bool displayAll, bool buildHierarchyMenuItem, bool buildClassStructuresMenuItem)
         {
             #region first loop - read asset data & create list
@@ -287,35 +297,29 @@ namespace Unity_Studio
                                 }
                             case 28: //Texture2D
                                 {
-                                    Console.WriteLine($"texture2D : {asset}");
                                     Texture2D m_Texture2D = new Texture2D(asset, false);
-                                    Console.WriteLine($"texture2D path: {asset.m_PathID}");
-                                    var filePath = new StringBuilder();
-                                    filePath.Append(assetsFile.filePath);
-                                    var sb = new StringBuilder(1024);
-                                    GetFilePath(filePath, asset.m_PathID, sb);
-
-                                    asset.Text = sb.ToString();
-
-                                    Console.WriteLine($"filePath: {sb.ToString()}");
+                                    SetOriginalPathName(assetsFile, asset);
                                     exportable = true;
                                     break;
                                 }
                             case 48: //Shader
                                 {
                                     Shader m_Shader = new Shader(asset, false);
+                                    SetOriginalPathName(assetsFile, asset);
                                     exportable = true;
                                     break;
                                 }
                             case 49: //TextAsset
                                 {
                                     TextAsset m_TextAsset = new TextAsset(asset, false);
+                                    SetOriginalPathName(assetsFile, asset);
                                     exportable = true;
                                     break;
                                 }
                             case 83: //AudioClip
                                 {
                                     AudioClip m_AudioClip = new AudioClip(asset, false);
+                                    SetOriginalPathName(assetsFile, asset);
                                     exportable = true;
                                     break;
                                 }
@@ -323,24 +327,30 @@ namespace Unity_Studio
                                 {
                                     var m_MonoBehaviour = new MonoBehaviour(asset, false);
                                     if (asset.Type1 != asset.Type2 && assetsFile.ClassStructures.ContainsKey(asset.Type1))
+                                    {
+                                        SetOriginalPathName(assetsFile, asset);
                                         exportable = true;
+                                    }
                                     break;
                                 }
                             case 128: //Font
                                 {
                                     unityFont m_Font = new unityFont(asset, false);
+                                    SetOriginalPathName(assetsFile, asset);
                                     exportable = true;
                                     break;
                                 }
                             case 129: //PlayerSettings
                                 {
                                     var plSet = new PlayerSettings(asset);
+                                    SetOriginalPathName(assetsFile, asset);
                                     productName = plSet.productName;
                                     break;
                                 }
                             case 43: //Mesh
                                 {
                                     Mesh m_Mesh = new Mesh(asset, false);
+                                    SetOriginalPathName(assetsFile, asset);
                                     exportable = true;
                                     break;
                                 }
@@ -370,7 +380,6 @@ namespace Unity_Studio
 
                                 stream.ReadInt32();
                                 stream.ReadInt32();
-                                Console.WriteLine($"xxxx: {(stream.ReadInt32())}");
                                 break;
                         }
                         if (!exportable && displayAll)
@@ -444,7 +453,6 @@ namespace Unity_Studio
                     {
                         fileNode.Text += " (no children)";
                     }
-                    Console.WriteLine($"aaaaagx: {fileNode.Name}, {fileNode.m_Name}");
                     fileNodes.Add(fileNode);
                 }
 

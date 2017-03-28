@@ -166,9 +166,6 @@ namespace Unity_Studio
                 {
                     path = Path.Combine(Path.GetDirectoryName(sourceFile.fileName), path.Replace("archive:/", ""));
 
-                    // debug
-                    Console.WriteLine(sourceFile.exportableAssets);
-
                     if (File.Exists(path) ||
                     File.Exists(path = Path.Combine(Path.GetDirectoryName(sourceFile.filePath), Path.GetFileName(path))))
                     {
@@ -190,12 +187,8 @@ namespace Unity_Studio
                 }
                 else
                 {
-                    // debug
-                    // ここで画像を読み込んでいる
                     image_data = new byte[image_data_size];
                     a_Stream.Read(image_data, 0, image_data_size);
-
-                    File.WriteAllBytes("lkgejgeaw.bin", image_data);
                 }
 
                 switch (m_TextureFormat)
@@ -778,7 +771,6 @@ namespace Unity_Studio
 
         public byte[] ConvertToContainer()
         {
-            Console.WriteLine("lkjlkjgwa");
             switch (m_TextureFormat)
             {
                 case TextureFormat.Alpha8:

@@ -154,7 +154,6 @@ namespace Unity_Studio
             
             filePath = fullName;
             fileName = Path.GetFileName(fullName);
-            Console.WriteLine($"filename: {fullName}");
             int tableSize = a_Stream.ReadInt32();
             int dataEnd = a_Stream.ReadInt32();
             fileGen = a_Stream.ReadInt32();
@@ -308,13 +307,7 @@ namespace Unity_Studio
                 {
                     asset.TypeString = "Unknown Type " + asset.Type2;
                 }
-
-                // debug
-                Console.WriteLine(asset.TypeString);
-                //if (asset.TypeString == "AssetBundle")
-                if (asset.TypeString == "Texture2D")
-                {
-                }
+                
                 asset.uniqueID = i.ToString(assetIDfmt);
 
                 asset.sourceFile = this;
