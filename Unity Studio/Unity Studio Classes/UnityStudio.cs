@@ -15,7 +15,7 @@ namespace Unity_Studio
     internal static class UnityStudio
     {
         [DllImport("UABEWrap.dll")]
-        private static extern void GetFilePath(StringBuilder file, Int64 id, StringBuilder str);
+        private static extern void GetFilePath(StringBuilder file, long id, StringBuilder str);
 
         public static List<string> unityFiles = new List<string>(); //files to load
         public static HashSet<string> unityFilesHash = new HashSet<string>(); //improve performance

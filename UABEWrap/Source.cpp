@@ -38,12 +38,10 @@ AssetTypeTemplateField *GetAssetTypeTemplateField(AssetsFile *assetsFile, int cl
 	return NULL;
 }
 
-void GetFilePath(const char* file, long long id, char *path)
+void GetFilePath(const char* file, long long int id, char *path)
 {
 	FILE *pFile;
 	fopen_s(&pFile, file, "rb");
-
-	printf("[LOAD] %s\n", file);
 
 	AssetsFile assetsFile(MyAssetsReaderFromFile, (LPARAM)pFile);
 	AssetsFileTable assetsFileTable(&assetsFile, false);
@@ -65,7 +63,11 @@ void GetFilePath(const char* file, long long id, char *path)
 		{
 			//printf("filePath: %s\n", filePath);
 			strcpy_s(path, 1024, filePath);
-			break;
+			fclose(pFile);
+			return;
 		}
 	}
+
+	strcpy_s(path, 1024, "unknown");
+	fclose(pFile);
 }
