@@ -250,7 +250,7 @@ namespace Unity_Studio
             var sb = new StringBuilder(1024);
             GetFilePath(filePath, asset.m_PathID, sb);
 
-            asset.Text = sb.ToString();
+            asset.Text = Path.GetDirectoryName(sb.ToString()) + Path.GetFileNameWithoutExtension(sb.ToString());
         }
 
         public static void BuildAssetStructures(bool loadAssetsMenuItem, bool displayAll, bool buildHierarchyMenuItem, bool buildClassStructuresMenuItem)
@@ -1155,7 +1155,7 @@ namespace Unity_Studio
                     //TODO check texture type and set path accordingly; eg. CubeMap, Texture3D
                     string texPathName = Path.GetDirectoryName(FBXfile) + "\\Texture2D\\";
                     ExportTexture(TexturePD, texPathName, false);
-                    texPathName += TexturePD.Text;
+                    texPathName += TexturePD.Text + ".png";//必须是png文件
                     ob.AppendFormat("\n\tTexture: 7{0}, \"Texture::{1}\", \"\" {{", TexturePD.uniqueID, TexturePD.Text);
                     ob.Append("\n\t\tType: \"TextureVideoClip\"");
                     ob.Append("\n\t\tVersion: 202");
