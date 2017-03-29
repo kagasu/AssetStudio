@@ -243,14 +243,22 @@ namespace Unity_Studio
             return extractedCount;
         }
 
-        private static void SetOriginalPathName(AssetsFile assetsFile, AssetPreloadData asset)
+        private static void SetOriginalPathName(AssetsFile assetsFile, AssetPreloadData asset, bool removeExtension = false)
         {
             var filePath = new StringBuilder();
             filePath.Append(assetsFile.filePath);
             var sb = new StringBuilder(1024);
             GetFilePath(filePath, asset.m_PathID, sb);
 
-            asset.Text = Path.GetDirectoryName(sb.ToString()) + "/" + Path.GetFileNameWithoutExtension(sb.ToString());
+            if (removeExtension || Path.GetExtension(sb.ToString()) == ".bytes")
+            {
+                asset.Text = Path.GetDirectoryName(sb.ToString()) + "/"  +  Path.GetFileNameWithoutExtension(sb.ToString());
+            }
+            else
+            {
+                asset.Text = Path.GetDirectoryName(sb.ToString()) + "/" + Path.GetFileName(sb.ToString());
+            }
+
         }
 
         public static void BuildAssetStructures(bool loadAssetsMenuItem, bool displayAll, bool buildHierarchyMenuItem, bool buildClassStructuresMenuItem)
@@ -298,7 +306,7 @@ namespace Unity_Studio
                             case 28: //Texture2D
                                 {
                                     Texture2D m_Texture2D = new Texture2D(asset, false);
-                                    SetOriginalPathName(assetsFile, asset);
+                                    SetOriginalPathName(assetsFile, asset, true);
                                     exportable = true;
                                     break;
                                 }

@@ -17,7 +17,7 @@ namespace Unity_Studio
             var sourceFile = preloadData.sourceFile;
             var a_Stream = preloadData.sourceFile.a_Stream;
             a_Stream.Position = preloadData.Offset;
-            preloadData.extension = ".txt";
+            //preloadData.extension = ".txt";
 
             if (sourceFile.platform == -2)
             {
