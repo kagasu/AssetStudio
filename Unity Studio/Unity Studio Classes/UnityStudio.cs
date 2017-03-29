@@ -1155,7 +1155,7 @@ namespace Unity_Studio
                     //TODO check texture type and set path accordingly; eg. CubeMap, Texture3D
                     string texPathName = Path.GetDirectoryName(FBXfile) + "\\Texture2D\\";
                     ExportTexture(TexturePD, texPathName, false);
-                    texPathName += TexturePD.Text + ".png";//必须是png文件
+                    texPathName += TexturePD.Text;
                     ob.AppendFormat("\n\tTexture: 7{0}, \"Texture::{1}\", \"\" {{", TexturePD.uniqueID, TexturePD.Text);
                     ob.Append("\n\t\tType: \"TextureVideoClip\"");
                     ob.Append("\n\t\tVersion: 202");
