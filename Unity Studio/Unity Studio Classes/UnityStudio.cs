@@ -250,7 +250,7 @@ namespace Unity_Studio
             var sb = new StringBuilder(1024);
             GetFilePath(filePath, asset.m_PathID, sb);
 
-            asset.Text = Path.GetDirectoryName(sb.ToString()) + Path.GetFileNameWithoutExtension(sb.ToString());
+            asset.Text = Path.GetDirectoryName(sb.ToString()) + "/" + Path.GetFileNameWithoutExtension(sb.ToString());
         }
 
         public static void BuildAssetStructures(bool loadAssetsMenuItem, bool displayAll, bool buildHierarchyMenuItem, bool buildClassStructuresMenuItem)
