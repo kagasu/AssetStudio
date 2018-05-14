@@ -853,7 +853,7 @@
             this.MinimumSize = new System.Drawing.Size(620, 400);
             this.Name = "UnityStudioForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Unity Studio";
+            this.Text = "Unity Studio (kagasu)";
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.UnityStudioForm_KeyDown);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
