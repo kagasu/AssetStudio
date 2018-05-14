@@ -274,9 +274,12 @@ namespace Unity_Studio
                             case 114: //MonoBehaviour
                                 {
                                     var m_MonoBehaviour = new MonoBehaviour(asset, false);
-                                    
+
                                     if (asset.Type1 != asset.Type2 && assetsFile.ClassStructures.ContainsKey(asset.Type1))
+                                    {
+                                        asset.Text = Path.GetFileNameWithoutExtension(asset.sourceFile.filePath);
                                         exportable = true;
+                                    }
                                     break;
                                 }
                             case 128: //Font
