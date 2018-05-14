@@ -30,27 +30,6 @@
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\x86\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\x86\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>Resources\unity.ico</ApplicationIcon>
   </PropertyGroup>
@@ -73,15 +52,9 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup>
-    <StartupObject />
+    <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="ManagedFbx">
-      <HintPath>library\x64\ManagedFbx.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.10.0.1\lib\net40\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="OpenTK, Version=2.0.0.0, Culture=neutral, PublicKeyToken=bad199fe84eb3df4, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>library\OpenTK.dll</HintPath>
@@ -104,7 +77,6 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
-    <Reference Include="System.Deployment" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
@@ -158,19 +130,26 @@
     <Compile Include="7zip\SevenZipHelper.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="AboutBox.cs">
-      <SubType>Form</SubType>
+    <Compile Include="OpenFolderDialog.cs" />
+    <Compile Include="ShaderResource.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>ShaderResource.resx</DependentUpon>
     </Compile>
-    <Compile Include="AboutBox.Designer.cs">
-      <DependentUpon>AboutBox.cs</DependentUpon>
-    </Compile>
+    <Compile Include="Unity Classes\AssetBundle.cs" />
+    <Compile Include="Unity Classes\MovieTexture.cs" />
+    <Compile Include="Unity Classes\Sprite.cs" />
+    <Compile Include="Unity Classes\SpriteAtlas.cs" />
+    <Compile Include="Unity Classes\VideoClip.cs" />
     <Compile Include="Unity Studio Classes\AssetPreloadData.cs" />
     <Compile Include="Unity Classes\AudioClip.cs" />
     <Compile Include="Unity Classes\BuildSettings.cs" />
     <Compile Include="Unity Studio Classes\BundleFile.cs" />
+    <Compile Include="Unity Studio Classes\ClassStruct.cs" />
+    <Compile Include="Unity Studio Classes\UnityEnum.cs" />
     <Compile Include="Unity Studio Classes\UnityStudio.cs" />
     <Compile Include="Unity Studio Classes\ClassIDReference.cs" />
-    <Compile Include="Unity Studio Classes\EndianStream.cs" />
+    <Compile Include="Unity Studio Classes\EndianBinaryReader.cs" />
     <Compile Include="ExportOptions.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -188,7 +167,7 @@
     <Compile Include="Unity Classes\Material.cs" />
     <Compile Include="Unity Classes\Mesh.cs" />
     <Compile Include="Unity Classes\GameObject.cs" />
-    <Compile Include="Unity Studio Classes\helpers.cs" />
+    <Compile Include="Unity Studio Classes\Helpers.cs" />
     <Compile Include="Unity Classes\MonoBehaviour.cs" />
     <Compile Include="Unity Classes\PlayerSettings.cs" />
     <Compile Include="Unity Classes\RectTransform.cs" />
@@ -208,10 +187,6 @@
     <Compile Include="UnityStudioForm.Designer.cs">
       <DependentUpon>UnityStudioForm.cs</DependentUpon>
     </Compile>
-    <EmbeddedResource Include="AboutBox.resx">
-      <DependentUpon>AboutBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
     <EmbeddedResource Include="ExportOptions.resx">
       <DependentUpon>ExportOptions.cs</DependentUpon>
     </EmbeddedResource>
@@ -225,15 +200,17 @@
       <DependentUpon>Resources.resx</DependentUpon>
       <DesignTime>True</DesignTime>
     </Compile>
+    <EmbeddedResource Include="ShaderResource.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>ShaderResource.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
     <EmbeddedResource Include="UnityStudioForm.resx">
       <DependentUpon>UnityStudioForm.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <None Include="app.config" />
-    <None Include="fs.glsl">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Include="app.config">
+      <SubType>Designer</SubType>
     </None>
-    <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -243,9 +220,6 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
-    <None Include="vs.glsl">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.0,Profile=Client">
@@ -265,10 +239,10 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\unity.ico" />
+    <None Include="Resources\preview.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\preview.png" />
+    <None Include="Resources\unity.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

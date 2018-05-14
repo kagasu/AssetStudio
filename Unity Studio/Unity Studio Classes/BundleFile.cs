@@ -1,7 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using Lz4;
+using SevenZip.Compression.LZMA;
 
 namespace Unity_Studio
 {
@@ -31,9 +31,7 @@ namespace Unity_Studio
                     int compressedSize = lz4Stream.ReadInt32();
                     int something = lz4Stream.ReadInt32(); //1
 
-                    byte[] lz4buffer = new byte[compressedSize];
-                    lz4Stream.Read(lz4buffer, 0, compressedSize);
-
+                    var lz4buffer = lz4Stream.ReadBytes(compressedSize);
                     using (var inputStream = new MemoryStream(lz4buffer))
                     {
                         var decoder = new Lz4DecoderStream(inputStream);
@@ -42,108 +40,108 @@ namespace Unity_Studio
                         decoder.Dispose();
                     }
                 }
-                using (var b_Stream = new EndianStream(new MemoryStream(filebuffer), EndianType.BigEndian))
+                using (var b_Stream = new EndianBinaryReader(new MemoryStream(filebuffer)))
                 {
                     readBundle(b_Stream);
                 }
             }
             else
             {
-                using (var b_Stream = new EndianStream(File.OpenRead(fileName), EndianType.BigEndian))
+                using (var b_Stream = new EndianBinaryReader(File.OpenRead(fileName)))
                 {
                     readBundle(b_Stream);
                 }
             }
         }
 
-        private void readBundle(EndianStream b_Stream)
+        private void readBundle(EndianBinaryReader b_Stream)
         {
             var signature = b_Stream.ReadStringToNull();
-
-            if (signature == "UnityWeb" || signature == "UnityRaw" || signature == "\xFA\xFA\xFA\xFA\xFA\xFA\xFA\xFA")
+            switch (signature)
             {
-                format = b_Stream.ReadInt32();
-                versionPlayer = b_Stream.ReadStringToNull();
-                versionEngine = b_Stream.ReadStringToNull();
-                if (format < 6)
-                {
-                    int bundleSize = b_Stream.ReadInt32();
-                }
-                else if (format == 6)
-                {
-                    ReadFormat6(b_Stream, true);
-                    return;
-                }
-                short dummy2 = b_Stream.ReadInt16();
-                int offset = b_Stream.ReadInt16();
-                int dummy3 = b_Stream.ReadInt32();
-                int lzmaChunks = b_Stream.ReadInt32();
-
-                int lzmaSize = 0;
-                long streamSize = 0;
-
-                for (int i = 0; i < lzmaChunks; i++)
-                {
-                    lzmaSize = b_Stream.ReadInt32();
-                    streamSize = b_Stream.ReadInt32();
-                }
-
-                b_Stream.Position = offset;
-                switch (signature)
-                {
-                    case "\xFA\xFA\xFA\xFA\xFA\xFA\xFA\xFA": //.bytes
-                    case "UnityWeb":
+                case "UnityWeb":
+                case "UnityRaw":
+                case "\xFA\xFA\xFA\xFA\xFA\xFA\xFA\xFA":
+                    {
+                        format = b_Stream.ReadInt32();
+                        versionPlayer = b_Stream.ReadStringToNull();
+                        versionEngine = b_Stream.ReadStringToNull();
+                        if (format < 6)
                         {
-                            byte[] lzmaBuffer = new byte[lzmaSize];
-                            b_Stream.Read(lzmaBuffer, 0, lzmaSize);
-
-                            using (var lzmaStream = new EndianStream(SevenZip.Compression.LZMA.SevenZipHelper.StreamDecompress(new MemoryStream(lzmaBuffer)), EndianType.BigEndian))
-                            {
-                                getFiles(lzmaStream, 0);
-                            }
-                            break;
+                            int bundleSize = b_Stream.ReadInt32();
                         }
-                    case "UnityRaw":
+                        else if (format == 6)
                         {
-                            getFiles(b_Stream, offset);
-                            break;
+                            ReadFormat6(b_Stream, true);
+                            return;
                         }
-                }
-            }
-            else if (signature == "UnityFS")
-            {
-                format = b_Stream.ReadInt32();
-                versionPlayer = b_Stream.ReadStringToNull();
-                versionEngine = b_Stream.ReadStringToNull();
-                if (format == 6)
-                {
-                    ReadFormat6(b_Stream);
-                }
+                        short dummy2 = b_Stream.ReadInt16();
+                        int offset = b_Stream.ReadInt16();
+                        int dummy3 = b_Stream.ReadInt32();
+                        int lzmaChunks = b_Stream.ReadInt32();
+
+                        int lzmaSize = 0;
+                        long streamSize = 0;
+
+                        for (int i = 0; i < lzmaChunks; i++)
+                        {
+                            lzmaSize = b_Stream.ReadInt32();
+                            streamSize = b_Stream.ReadInt32();
+                        }
+
+                        b_Stream.Position = offset;
+                        switch (signature)
+                        {
+                            case "\xFA\xFA\xFA\xFA\xFA\xFA\xFA\xFA": //.bytes
+                            case "UnityWeb":
+                                {
+                                    var lzmaBuffer = b_Stream.ReadBytes(lzmaSize);
+                                    using (var lzmaStream = new EndianBinaryReader(SevenZipHelper.StreamDecompress(new MemoryStream(lzmaBuffer))))
+                                    {
+                                        getFiles(lzmaStream, 0);
+                                    }
+                                    break;
+                                }
+                            case "UnityRaw":
+                                {
+                                    getFiles(b_Stream, offset);
+                                    break;
+                                }
+                        }
+                        break;
+                    }
+                case "UnityFS":
+                    format = b_Stream.ReadInt32();
+                    versionPlayer = b_Stream.ReadStringToNull();
+                    versionEngine = b_Stream.ReadStringToNull();
+                    if (format == 6)
+                    {
+                        ReadFormat6(b_Stream);
+                    }
+                    break;
             }
         }
 
-        private void getFiles(EndianStream f_Stream, int offset)
+        private void getFiles(EndianBinaryReader f_Stream, int offset)
         {
             int fileCount = f_Stream.ReadInt32();
             for (int i = 0; i < fileCount; i++)
             {
-                MemoryAssetsFile memFile = new MemoryAssetsFile();
+                var memFile = new MemoryAssetsFile();
                 memFile.fileName = f_Stream.ReadStringToNull();
                 int fileOffset = f_Stream.ReadInt32();
                 fileOffset += offset;
                 int fileSize = f_Stream.ReadInt32();
                 long nextFile = f_Stream.Position;
                 f_Stream.Position = fileOffset;
-
-                byte[] buffer = new byte[fileSize];
-                f_Stream.Read(buffer, 0, fileSize);
+                var buffer = f_Stream.ReadBytes(fileSize);
                 memFile.memStream = new MemoryStream(buffer);
                 MemoryAssetsFileList.Add(memFile);
                 f_Stream.Position = nextFile;
             }
         }
 
-        private void ReadFormat6(EndianStream b_Stream, bool padding = false)
+        private void ReadFormat6(EndianBinaryReader b_Stream, bool padding = false)
         {
             var bundleSize = b_Stream.ReadInt64();
             int compressedSize = b_Stream.ReadInt32();
@@ -163,18 +161,17 @@ namespace Unity_Studio
             {
                 blocksInfoBytes = b_Stream.ReadBytes(compressedSize);
             }
-            EndianStream blocksInfo;
+            MemoryStream blocksInfoStream;
             switch (flag & 0x3F)
             {
-                default:
-                case 0://None
+                default://None
                     {
-                        blocksInfo = new EndianStream(new MemoryStream(blocksInfoBytes), EndianType.BigEndian);
+                        blocksInfoStream = new MemoryStream(blocksInfoBytes);
                         break;
                     }
                 case 1://LZMA
                     {
-                        blocksInfo = new EndianStream(SevenZip.Compression.LZMA.SevenZipHelper.StreamDecompress(new MemoryStream(blocksInfoBytes)), EndianType.BigEndian);
+                        blocksInfoStream = SevenZipHelper.StreamDecompress(new MemoryStream(blocksInfoBytes));
                         break;
                     }
                 case 2://LZ4
@@ -187,16 +184,15 @@ namespace Unity_Studio
                             decoder.Read(uncompressedBytes, 0, uncompressedSize);
                             decoder.Dispose();
                         }
-                        blocksInfo = new EndianStream(new MemoryStream(uncompressedBytes), EndianType.BigEndian);
+                        blocksInfoStream = new MemoryStream(uncompressedBytes);
                         break;
                     }
                     //case 4:LZHAM?
             }
-            using (blocksInfo)
+            using (var blocksInfo = new EndianBinaryReader(blocksInfoStream))
             {
                 blocksInfo.Position = 0x10;
                 int blockcount = blocksInfo.ReadInt32();
-                EndianStream assetsData;
                 var assetsDataStream = new MemoryStream();
                 for (int i = 0; i < blockcount; i++)
                 {
@@ -206,8 +202,7 @@ namespace Unity_Studio
                     var compressedBytes = b_Stream.ReadBytes(compressedSize);
                     switch (flag & 0x3F)
                     {
-                        default:
-                        case 0://None
+                        default://None
                             {
                                 assetsDataStream.Write(compressedBytes, 0, compressedSize);
                                 break;
@@ -217,7 +212,7 @@ namespace Unity_Studio
                                 var uncompressedBytes = new byte[uncompressedSize];
                                 using (var mstream = new MemoryStream(compressedBytes))
                                 {
-                                    var decoder = SevenZip.Compression.LZMA.SevenZipHelper.StreamDecompress(mstream, uncompressedSize);
+                                    var decoder = SevenZipHelper.StreamDecompress(mstream, uncompressedSize);
                                     decoder.Read(uncompressedBytes, 0, uncompressedSize);
                                     decoder.Dispose();
                                 }
@@ -240,8 +235,7 @@ namespace Unity_Studio
                             //case 4:LZHAM?
                     }
                 }
-                assetsData = new EndianStream(assetsDataStream, EndianType.BigEndian);
-                using (assetsData)
+                using (var assetsData = new EndianBinaryReader(assetsDataStream))
                 {
                     var entryinfo_count = blocksInfo.ReadInt32();
                     for (int i = 0; i < entryinfo_count; i++)
@@ -252,8 +246,7 @@ namespace Unity_Studio
                         var unknown = blocksInfo.ReadInt32();
                         memFile.fileName = blocksInfo.ReadStringToNull();
                         assetsData.Position = entryinfo_offset;
-                        var buffer = new byte[entryinfo_size];
-                        assetsData.Read(buffer, 0, (int)entryinfo_size);
+                        var buffer = assetsData.ReadBytes((int)entryinfo_size);
                         memFile.memStream = new MemoryStream(buffer);
                         MemoryAssetsFileList.Add(memFile);
                     }

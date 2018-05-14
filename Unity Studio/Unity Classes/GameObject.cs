@@ -52,16 +52,15 @@ namespace Unity_Studio
                 }
 
                 m_Layer = a_Stream.ReadInt32();
-                int namesize = a_Stream.ReadInt32();
-                m_Name = a_Stream.ReadAlignedString(namesize);
+                m_Name = a_Stream.ReadAlignedString(a_Stream.ReadInt32());
                 if (m_Name == "") { m_Name = "GameObject #" + uniqueID; }
                 m_Tag = a_Stream.ReadUInt16();
                 m_IsActive = a_Stream.ReadBoolean();
 
-                base.Text = m_Name;
+                Text = m_Name;
                 preloadData.Text = m_Name;
                 //name should be unique
-                base.Name = uniqueID;
+                Name = uniqueID;
             }
         }
     }

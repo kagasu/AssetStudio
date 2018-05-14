@@ -13,7 +13,6 @@ using System.Diagnostics;
 using System.Drawing.Text;
 using OpenTK;
 using OpenTK.Graphics.OpenGL;
-using ManagedFbx;
 using static Unity_Studio.UnityStudio;
 
 namespace Unity_Studio
@@ -22,8 +21,6 @@ namespace Unity_Studio
     {
         private AssetPreloadData lastSelectedItem;
         private AssetPreloadData lastLoadedAsset;
-
-        private string[] fileTypes = { "globalgamemanagers", "maindata.", "level*.", "*.assets", "*.sharedAssets", "CustomAssetBundle-*", "CAB-*", "BuildPlayer-*" };
 
         private FMOD.System system;
         private FMOD.Sound sound;
@@ -37,25 +34,29 @@ namespace Unity_Studio
         private Bitmap imageTexture;
 
         #region OpenTK variables
-        int pgmID;
-        int vsID;
-        int fsID;
+        int pgmID, pgmColorID, pgmBlackID;
         int attributeVertexPosition;
         int attributeNormalDirection;
         int attributeVertexColor;
+        int uniformModelMatrix;
         int uniformViewMatrix;
         int vao;
         int vboPositions;
         int vboNormals;
         int vboColors;
+        int vboModelMatrix;
         int vboViewMatrix;
         int eboElements;
-        OpenTK.Vector3[] vertexData;
-        OpenTK.Vector3[] normalData;
-        OpenTK.Vector4[] colorData;
-        Matrix4[] viewMatrixData;
+        Vector3[] vertexData;
+        Vector3[] normalData;
+        Vector3[] normal2Data;
+        Vector4[] colorData;
+        Matrix4 modelMatrixData;
+        Matrix4 viewMatrixData;
         int[] indiceData;
-        bool wireFrameView;
+        int wireFrameMode;
+        int shadeMode;
+        int normalMode;
         #endregion
 
         //asset list sorting helpers
@@ -70,24 +71,42 @@ namespace Unity_Studio
 
         private PrivateFontCollection pfc = new PrivateFontCollection();
 
+        private AssetPreloadData selectasset;
+
         [DllImport("gdi32.dll")]
         private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, [In] ref uint pcFonts);
 
 
-        private void loadFile_Click(object sender, System.EventArgs e)
+        private void loadFile_Click(object sender, EventArgs e)
         {
             if (openFileDialog1.ShowDialog() == DialogResult.OK)
             {
                 resetForm();
-                mainPath = Path.GetDirectoryName(openFileDialog1.FileNames[0]);
                 ThreadPool.QueueUserWorkItem(state =>
                 {
+                    var bundle = false;
                     if (openFileDialog1.FilterIndex == 1 || openFileDialog1.FilterIndex == 3)
                     {
+                        if (CheckBundleFile(openFileDialog1.FileNames[0]))
+                        {
+                            if (openFileDialog1.FileNames.Length > 1)
+                            {
+                                MessageBox.Show($"{Path.GetFileName(openFileDialog1.FileNames[0])} is bundle file, please select bundle file type to load this file");
+                                return;
+                            }
+                            bundle = true;
+                        }
+                    }
+                    else
+                    {
+                        bundle = true;
+                    }
+                    if (!bundle)
+                    {
+                        mainPath = Path.GetDirectoryName(openFileDialog1.FileNames[0]);
                         MergeSplitAssets(mainPath);
-
-                        //unityFiles.AddRange(openFileDialog1.FileNames);
-                        foreach (var i in openFileDialog1.FileNames)
+                        var readFile = ProcessingSplitFiles(openFileDialog1.FileNames.ToList());
+                        foreach (var i in readFile)
                         {
                             unityFiles.Add(i);
                             unityFilesHash.Add(Path.GetFileName(i));
@@ -97,8 +116,9 @@ namespace Unity_Studio
                         //use a for loop because list size can change
                         for (int f = 0; f < unityFiles.Count; f++)
                         {
-                            StatusStripUpdate("Loading " + Path.GetFileName(unityFiles[f]));
-                            LoadAssetsFile(unityFiles[f]);
+                            var fileName = unityFiles[f];
+                            StatusStripUpdate("Loading " + Path.GetFileName(fileName));
+                            LoadAssetsFile(fileName);
                             ProgressBarPerformStep();
                         }
                     }
@@ -111,101 +131,55 @@ namespace Unity_Studio
                             LoadBundleFile(filename);
                             ProgressBarPerformStep();
                         }
+                        BuildSharedIndex();
                     }
-                    BuildAssetStrucutres();
                     unityFilesHash.Clear();
                     assetsfileListHash.Clear();
+                    sharedFileIndex.Clear();
+                    BuildAssetStrucutres();
                 });
             }
         }
 
-        private void loadFolder_Click(object sender, System.EventArgs e)
+        private void loadFolder_Click(object sender, EventArgs e)
         {
-            /*FolderBrowserDialog folderBrowserDialog1 = new FolderBrowserDialog();
-
-            folderBrowserDialog1.Description = "Load all Unity assets from folder and subfolders";
-            folderBrowserDialog1.ShowNewFolderButton = false;
-            //folderBrowserDialog1.SelectedPath = "E:\\Assets\\Unity";
-            folderBrowserDialog1.SelectedPath = "E:\\Assets\\Unity\\WebPlayer\\Porsche\\92AAF1\\defaultGeometry";*/
-
-            if (openFolderDialog1.ShowDialog() == DialogResult.OK)
+            var openFolderDialog1 = new OpenFolderDialog();
+            if (openFolderDialog1.ShowDialog(this) == DialogResult.OK)
             {
-                //mainPath = folderBrowserDialog1.SelectedPath;
-                mainPath = openFolderDialog1.FileName;
-                if (Path.GetFileName(mainPath) == "Select folder")
-                { mainPath = Path.GetDirectoryName(mainPath); }
-
-                if (Directory.Exists(mainPath))
+                resetForm();
+                ThreadPool.QueueUserWorkItem(state =>
                 {
-                    resetForm();
-
-                    //TODO find a way to read data directly instead of merging files
+                    mainPath = openFolderDialog1.Folder;
                     MergeSplitAssets(mainPath);
-
-                    for (int t = 0; t < fileTypes.Length; t++)
+                    var files = Directory.GetFiles(mainPath, "*.*", SearchOption.AllDirectories).ToList();
+                    var readFile = ProcessingSplitFiles(files);
+                    foreach (var i in readFile)
                     {
-                        string[] fileNames = Directory.GetFiles(mainPath, fileTypes[t], SearchOption.AllDirectories);
-                        #region  sort specific types alphanumerically
-                        if (fileNames.Length > 0 && (t == 1 || t == 2))
-                        {
-                            var sortedList = fileNames.ToList();
-                            sortedList.Sort((s1, s2) =>
-                            {
-                                string pattern = "([A-Za-z\\s]*)([0-9]*)";
-                                string h1 = Regex.Match(Path.GetFileNameWithoutExtension(s1), pattern).Groups[1].Value;
-                                string h2 = Regex.Match(Path.GetFileNameWithoutExtension(s2), pattern).Groups[1].Value;
-                                if (h1 != h2)
-                                    return h1.CompareTo(h2);
-                                string t1 = Regex.Match(Path.GetFileNameWithoutExtension(s1), pattern).Groups[2].Value;
-                                string t2 = Regex.Match(Path.GetFileNameWithoutExtension(s2), pattern).Groups[2].Value;
-                                if (t1 != "" && t2 != "")
-                                    return int.Parse(t1).CompareTo(int.Parse(t2));
-                                return 0;
-                            });
-                            foreach (var i in sortedList)
-                            {
-                                unityFiles.Add(i);
-                                unityFilesHash.Add(Path.GetFileName(i));
-                            }
-
-                        }
-                        #endregion
-                        else
-                        {
-                            foreach (var i in fileNames)
-                            {
-                                unityFiles.Add(i);
-                                unityFilesHash.Add(Path.GetFileName(i));
-                            }
-                        }
+                        unityFiles.Add(i);
+                        unityFilesHash.Add(Path.GetFileName(i));
                     }
-
-                    unityFiles = unityFiles.Distinct().ToList();
-                    progressBar1.Value = 0;
-                    progressBar1.Maximum = unityFiles.Count;
-                    ThreadPool.QueueUserWorkItem(delegate
+                    SetProgressBarValue(0);
+                    SetProgressBarMaximum(unityFiles.Count);
+                    //use a for loop because list size can change
+                    for (int f = 0; f < unityFiles.Count; f++)
                     {
-                        //use a for loop because list size can change
-                        for (int f = 0; f < unityFiles.Count; f++)
-                        {
-                            var fileName = unityFiles[f];
-                            StatusStripUpdate("Loading " + Path.GetFileName(fileName));
-                            LoadAssetsFile(fileName);
-                            ProgressBarPerformStep();
-                        }
-                        unityFilesHash.Clear();
-                        assetsfileListHash.Clear();
-                        BuildAssetStrucutres();
-                    });
-                }
-                else { StatusStripUpdate("Selected path deos not exist."); }
+                        var fileName = unityFiles[f];
+                        StatusStripUpdate("Loading " + Path.GetFileName(fileName));
+                        LoadAssetsFile(fileName);
+                        ProgressBarPerformStep();
+                    }
+                    unityFilesHash.Clear();
+                    assetsfileListHash.Clear();
+                    sharedFileIndex.Clear();
+                    BuildAssetStrucutres();
+                });
             }
         }
 
         private void extractBundleToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog openBundleDialog = new OpenFileDialog();
-            openBundleDialog.Filter = "Unity bundle files|*.unity3d; *.unity3d.lz4; *.assetbundle; *.bundle; *.bytes|All files (use at your own risk!)|*.*";
+            openBundleDialog.Filter = "Unity bundle files|*.*";
             openBundleDialog.FilterIndex = 1;
             openBundleDialog.RestoreDirectory = true;
             openBundleDialog.Multiselect = true;
@@ -222,7 +196,7 @@ namespace Unity_Studio
                         extractedCount += extractBundleFile(fileName);
                         ProgressBarPerformStep();
                     }
-                    StatusStripUpdate("Finished extracting " + extractedCount + " files.");
+                    StatusStripUpdate($"Finished extracting {extractedCount} files.");
                 });
             }
         }
@@ -230,24 +204,11 @@ namespace Unity_Studio
         private void extractFolderToolStripMenuItem_Click(object sender, EventArgs e)
         {
             int extractedCount = 0;
-            List<string> bundleFiles = new List<string>();
-
-            /*FolderBrowserDialog folderBrowserDialog1 = new FolderBrowserDialog();
-            folderBrowserDialog1.Description = "Extract all Unity bundles from folder and subfolders";
-            folderBrowserDialog1.ShowNewFolderButton = false;*/
-
-            if (openFolderDialog1.ShowDialog() == DialogResult.OK)
+            var openFolderDialog1 = new OpenFolderDialog();
+            if (openFolderDialog1.ShowDialog(this) == DialogResult.OK)
             {
-                string startPath = openFolderDialog1.FileName;
-                if (Path.GetFileName(startPath) == "Select folder")
-                { startPath = Path.GetDirectoryName(startPath); }
-
-                string[] fileTypes = new string[6] { "*.unity3d", "*.unity3d.lz4", "*.assetbundle", "*.assetbundle-*", "*.bundle", "*.bytes" };
-                foreach (var fileType in fileTypes)
-                {
-                    string[] fileNames = Directory.GetFiles(startPath, fileType, SearchOption.AllDirectories);
-                    bundleFiles.AddRange(fileNames);
-                }
+                string startPath = openFolderDialog1.Folder;
+                var bundleFiles = Directory.GetFiles(startPath, "*.*", SearchOption.AllDirectories).ToList();
                 progressBar1.Value = 0;
                 progressBar1.Maximum = bundleFiles.Count;
                 ThreadPool.QueueUserWorkItem(delegate
@@ -257,7 +218,7 @@ namespace Unity_Studio
                         extractedCount += extractBundleFile(fileName);
                         ProgressBarPerformStep();
                     }
-                    StatusStripUpdate("Finished extracting " + extractedCount + " files.");
+                    StatusStripUpdate($"Finished extracting {extractedCount} files.");
                 });
             }
         }
@@ -269,21 +230,22 @@ namespace Unity_Studio
             bool optionBuildHierarchyMenuItem = !dontBuildHierarchyMenuItem.Checked;
             bool optionBuildClassStructuresMenuItem = buildClassStructuresMenuItem.Checked;
 
-            BuildAssetStructures(optionLoadAssetsMenuItem, optionDisplayAll, optionBuildHierarchyMenuItem, optionBuildClassStructuresMenuItem);
+            BuildAssetStructures(optionLoadAssetsMenuItem, optionDisplayAll, optionBuildHierarchyMenuItem, optionBuildClassStructuresMenuItem, displayOriginalName.Checked);
 
             BeginInvoke(new Action(() =>
             {
                 if (productName != "")
                 {
-                    this.Text = "Unity Studio - " + productName + " - " + assetsfileList[0].m_Version + " - " + assetsfileList[0].platformStr;
+                    Text = $"Unity Studio - {productName} - {assetsfileList[0].m_Version} - {assetsfileList[0].platformStr}";
                 }
                 else if (assetsfileList.Count > 0)
                 {
-                    this.Text = "Unity Studio - no productName - " + assetsfileList[0].m_Version + " - " + assetsfileList[0].platformStr;
+                    Text = $"Unity Studio - no productName - {assetsfileList[0].m_Version} - {assetsfileList[0].platformStr}";
                 }
                 if (!dontLoadAssetsMenuItem.Checked)
                 {
                     assetListView.VirtualListSize = visibleAssets.Count;
+                    //will only work if ListView is visible
                     resizeAssetListColumns();
                 }
                 if (!dontBuildHierarchyMenuItem.Checked)
@@ -309,9 +271,8 @@ namespace Unity_Studio
                     }
                     classesListView.EndUpdate();
                 }
-                StatusStripUpdate("Finished loading " + assetsfileList.Count + " files with " + (assetListView.Items.Count + sceneTreeView.Nodes.Count) + " exportable assets.");
+                StatusStripUpdate($"Finished loading {assetsfileList.Count} files with {assetListView.Items.Count} exportable assets.");
                 treeSearch.Select();
-                saveFolderDialog1.InitialDirectory = mainPath;
             }));
         }
 
@@ -327,89 +288,80 @@ namespace Unity_Studio
                 else { tabControl1.TabPages.Add(tabPage3); }
             }
 
-            if (glControl1.Visible == true)
+            if (glControl1.Visible)
             {
-                // --> Right
-                if (e.KeyCode == Keys.D)
+                switch (e.KeyCode)
                 {
-                    if (e.Shift && e.KeyCode == Keys.D) //Move
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateTranslation(0.1f, 0, 0);
-                    }
-                    else //Rotate
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateRotationY(0.1f);
-                    }
-                    GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
-                    glControl1.Invalidate();
-                }
-
-                // <-- Left
-                if (e.KeyCode == Keys.A)
-                {
-                    if (e.Shift && e.KeyCode == Keys.A) //Move
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateTranslation(-0.1f, 0, 0);
-                    }
-                    else //Rotate
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateRotationY(-0.1f);
-                    }
-                    GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
-                    glControl1.Invalidate();
-                }
-
-                // Up 
-                if (e.KeyCode == Keys.W)
-                {
-                    if (e.Control && e.KeyCode == Keys.W) //Toggle WireFrame
-                    {
-                        wireFrameView = !wireFrameView;
+                    case Keys.D: // --> Right
+                        if (e.Shift) //Move
+                        {
+                            viewMatrixData *= Matrix4.CreateTranslation(0.1f, 0, 0);
+                        }
+                        else //Rotate
+                        {
+                            viewMatrixData *= Matrix4.CreateRotationY(0.1f);
+                        }
                         glControl1.Invalidate();
-                    }
-                    else if (e.Shift && e.KeyCode == Keys.W) //Move
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateTranslation(0, 0.1f, 0);
-                    }
-                    else //Rotate
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateRotationX(0.1f);
-                    }
-                    GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
-                    glControl1.Invalidate();
+                        break;
+                    case Keys.A: // <-- Left
+                        if (e.Shift) //Move
+                        {
+                            viewMatrixData *= Matrix4.CreateTranslation(-0.1f, 0, 0);
+                        }
+                        else //Rotate
+                        {
+                            viewMatrixData *= Matrix4.CreateRotationY(-0.1f);
+                        }
+                        glControl1.Invalidate();
+                        break;
+                    case Keys.W: // Up 
+                        if (e.Control) //Toggle WireFrame
+                        {
+                            wireFrameMode = (wireFrameMode + 1) % 3;
+                            glControl1.Invalidate();
+                        }
+                        else if (e.Shift) //Move
+                        {
+                            viewMatrixData *= Matrix4.CreateTranslation(0, 0.1f, 0);
+                        }
+                        else //Rotate
+                        {
+                            viewMatrixData *= Matrix4.CreateRotationX(0.1f);
+                        }
+                        glControl1.Invalidate();
+                        break;
+                    case Keys.S: // Down
+                        if (e.Control) //Toggle Shade
+                        {
+                            shadeMode = (shadeMode + 1) % 2;
+                            glControl1.Invalidate();
+                        }
+                        else if (e.Shift) //Move
+                        {
+                            viewMatrixData *= Matrix4.CreateTranslation(0, -0.1f, 0);
+                        }
+                        else //Rotate
+                        {
+                            viewMatrixData *= Matrix4.CreateRotationX(-0.1f);
+                        }
+                        glControl1.Invalidate();
+                        break;
+                    case Keys.Q: // Zoom Out
+                        viewMatrixData *= Matrix4.CreateScale(0.9f);
+                        glControl1.Invalidate();
+                        break;
+                    case Keys.E: // Zoom In
+                        viewMatrixData *= Matrix4.CreateScale(1.1f);
+                        glControl1.Invalidate();
+                        break;
                 }
-
-                // Down
-                if (e.KeyCode == Keys.S)
+                // Normal mode
+                if (e.Control && e.KeyCode == Keys.N)
                 {
-                    if (e.Shift && e.KeyCode == Keys.S) //Move
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateTranslation(0, -0.1f, 0);
-                    }
-                    else //Rotate
-                    {
-                        viewMatrixData[0] *= Matrix4.CreateRotationX(-0.1f);
-                    }
-                    GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
+                    normalMode = (normalMode + 1) % 2;
+                    createVAO();
                     glControl1.Invalidate();
                 }
-
-                // Zoom Out
-                if (e.KeyCode == Keys.Q)
-                {
-                    viewMatrixData[0] *= Matrix4.CreateScale(0.9f);
-                    GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
-                    glControl1.Invalidate();
-                }
-
-                // Zoom In
-                if (e.KeyCode == Keys.E)
-                {
-                    viewMatrixData[0] *= Matrix4.CreateScale(1.1f);
-                    GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
-                    glControl1.Invalidate();
-                }
-
                 // Toggle Timer
                 if (e.KeyCode == Keys.T)
                 {
@@ -432,15 +384,13 @@ namespace Unity_Studio
         {
             if (AllClassStructures.Count > 0)
             {
-                if (saveFolderDialog1.ShowDialog() == DialogResult.OK)
+                var saveFolderDialog1 = new OpenFolderDialog();
+                if (saveFolderDialog1.ShowDialog(this) == DialogResult.OK)
                 {
                     progressBar1.Value = 0;
                     progressBar1.Maximum = AllClassStructures.Count;
 
-                    var savePath = saveFolderDialog1.FileName;
-                    if (Path.GetFileName(savePath) == "Select folder or write folder name to create")
-                    { savePath = Path.GetDirectoryName(saveFolderDialog1.FileName); }
-
+                    var savePath = saveFolderDialog1.Folder;
                     foreach (var version in AllClassStructures)
                     {
                         if (version.Value.Count > 0)
@@ -450,7 +400,7 @@ namespace Unity_Studio
 
                             foreach (var uclass in version.Value)
                             {
-                                string saveFile = versionPath + "\\" + uclass.Key + " " + uclass.Value.Text + ".txt";
+                                string saveFile = $"{versionPath}\\{uclass.Key} {uclass.Value.Text}.txt";
                                 using (StreamWriter TXTwriter = new StreamWriter(saveFile))
                                 {
                                     TXTwriter.Write(uclass.Value.membersstr);
@@ -474,6 +424,7 @@ namespace Unity_Studio
                 switch (lastLoadedAsset.Type2)
                 {
                     case 28:
+                    case 213:
                         {
                             if (enablePreview.Checked && imageTexture != null)
                             {
@@ -500,10 +451,7 @@ namespace Unity_Studio
 
                             if (sound != null && channel != null)
                             {
-                                FMOD.RESULT result;
-
-                                bool playing = false;
-                                result = channel.isPlaying(out playing);
+                                var result = channel.isPlaying(out var playing);
                                 if (result == FMOD.RESULT.OK && playing)
                                 {
                                     result = channel.stop();
@@ -558,12 +506,6 @@ namespace Unity_Studio
             exportOpt.ShowDialog();
         }
 
-        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            AboutBox aboutWindow = new AboutBox();
-            aboutWindow.ShowDialog();
-        }
-
         private void assetListView_RetrieveVirtualItem(object sender, RetrieveVirtualItemEventArgs e)
         {
             e.Item = visibleAssets[e.ItemIndex];
@@ -573,14 +515,22 @@ namespace Unity_Studio
         {
             switch (e.TabPageIndex)
             {
-                case 0: treeSearch.Select(); break;
+                case 0:
+                    treeSearch.Select();
+                    _3DToolStripMenuItem.Visible = true;
+                    exportToolStripMenuItem.Visible = false;
+                    break;
                 case 1:
+                    _3DToolStripMenuItem.Visible = false;
+                    exportToolStripMenuItem.Visible = true;
                     resizeAssetListColumns(); //required because the ListView is not visible on app launch
                     classPreviewPanel.Visible = false;
                     previewPanel.Visible = true;
                     listSearch.Select();
                     break;
                 case 2:
+                    _3DToolStripMenuItem.Visible = false;
+                    exportToolStripMenuItem.Visible = false;
                     previewPanel.Visible = false;
                     classPreviewPanel.Visible = true;
                     break;
@@ -597,7 +547,7 @@ namespace Unity_Studio
             if (treeSearch.Text == " Search ")
             {
                 treeSearch.Text = "";
-                treeSearch.ForeColor = System.Drawing.SystemColors.WindowText;
+                treeSearch.ForeColor = SystemColors.WindowText;
             }
         }
 
@@ -606,7 +556,7 @@ namespace Unity_Studio
             if (treeSearch.Text == "")
             {
                 treeSearch.Text = " Search ";
-                treeSearch.ForeColor = System.Drawing.SystemColors.GrayText;
+                treeSearch.ForeColor = SystemColors.GrayText;
             }
         }
 
@@ -695,7 +645,7 @@ namespace Unity_Studio
             if (listSearch.Text == " Filter ")
             {
                 listSearch.Text = "";
-                listSearch.ForeColor = System.Drawing.SystemColors.WindowText;
+                listSearch.ForeColor = SystemColors.WindowText;
                 enableFiltering = true;
             }
         }
@@ -706,7 +656,7 @@ namespace Unity_Studio
             {
                 enableFiltering = false;
                 listSearch.Text = " Filter ";
-                listSearch.ForeColor = System.Drawing.SystemColors.GrayText;
+                listSearch.ForeColor = SystemColors.GrayText;
             }
         }
 
@@ -716,8 +666,7 @@ namespace Unity_Studio
             {
                 assetListView.BeginUpdate();
                 assetListView.SelectedIndices.Clear();
-                //visibleListAssets = exportableAssets.FindAll(ListAsset => ListAsset.Text.StartsWith(ListSearch.Text, System.StringComparison.CurrentCultureIgnoreCase));
-                visibleAssets = exportableAssets.FindAll(ListAsset => ListAsset.Text.IndexOf(listSearch.Text, System.StringComparison.CurrentCultureIgnoreCase) >= 0);
+                visibleAssets = exportableAssets.FindAll(ListAsset => ListAsset.Text.IndexOf(listSearch.Text, StringComparison.CurrentCultureIgnoreCase) >= 0);
                 assetListView.VirtualListSize = visibleAssets.Count;
                 assetListView.EndUpdate();
             }
@@ -743,7 +692,7 @@ namespace Unity_Studio
                     {
                         int xdiff = reverseSort ? b.Text.CompareTo(a.Text) : a.Text.CompareTo(b.Text);
                         if (xdiff != 0) return xdiff;
-                        else return secondSortColumn == 1 ? a.TypeString.CompareTo(b.TypeString) : a.Size.CompareTo(b.Size);
+                        return secondSortColumn == 1 ? a.TypeString.CompareTo(b.TypeString) : a.fullSize.CompareTo(b.fullSize);
                     });
                     break;
                 case 1:
@@ -751,15 +700,15 @@ namespace Unity_Studio
                     {
                         int xdiff = reverseSort ? b.TypeString.CompareTo(a.TypeString) : a.TypeString.CompareTo(b.TypeString);
                         if (xdiff != 0) return xdiff;
-                        else return secondSortColumn == 2 ? a.Size.CompareTo(b.Size) : a.Text.CompareTo(b.Text);
+                        return secondSortColumn == 2 ? a.fullSize.CompareTo(b.fullSize) : a.Text.CompareTo(b.Text);
                     });
                     break;
                 case 2:
                     visibleAssets.Sort(delegate (AssetPreloadData a, AssetPreloadData b)
                     {
-                        int xdiff = reverseSort ? b.Size.CompareTo(a.Size) : a.Size.CompareTo(b.Size);
+                        int xdiff = reverseSort ? b.fullSize.CompareTo(a.fullSize) : a.fullSize.CompareTo(b.fullSize);
                         if (xdiff != 0) return xdiff;
-                        else return secondSortColumn == 1 ? a.TypeString.CompareTo(b.TypeString) : a.Text.CompareTo(b.Text);
+                        return secondSortColumn == 1 ? a.TypeString.CompareTo(b.TypeString) : a.Text.CompareTo(b.Text);
                     });
                     break;
             }
@@ -772,7 +721,7 @@ namespace Unity_Studio
         private void selectAsset(object sender, ListViewItemSelectionChangedEventArgs e)
         {
             previewPanel.BackgroundImage = Properties.Resources.preview;
-            previewPanel.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Center;
+            previewPanel.BackgroundImageLayout = ImageLayout.Center;
             assetInfoLabel.Visible = false;
             assetInfoLabel.Text = null;
             textPreviewBox.Visible = false;
@@ -789,13 +738,15 @@ namespace Unity_Studio
 
             if (e.IsSelected)
             {
-                assetInfoLabel.Text = lastSelectedItem.InfoText;
-                if (displayInfo.Checked && assetInfoLabel.Text != null) { assetInfoLabel.Visible = true; } //only display the label if asset has info text
-
                 if (enablePreview.Checked)
                 {
                     lastLoadedAsset = lastSelectedItem;
                     PreviewAsset(lastLoadedAsset);
+                }
+                if (displayInfo.Checked && assetInfoLabel.Text != null)//only display the label if asset has info text
+                {
+                    assetInfoLabel.Text = lastSelectedItem.InfoText;
+                    assetInfoLabel.Visible = true;
                 }
             }
         }
@@ -815,8 +766,7 @@ namespace Unity_Studio
                 #region Texture2D
                 case 28: //Texture2D
                     {
-                        if (imageTexture != null)
-                            imageTexture.Dispose();
+                        imageTexture?.Dispose();
                         var m_Texture2D = new Texture2D(asset, true);
                         imageTexture = m_Texture2D.ConvertToBitmap(true);
                         if (imageTexture != null)
@@ -829,7 +779,7 @@ namespace Unity_Studio
                         }
                         else
                         {
-                            StatusStripUpdate("Unsupported image for preview. Can only export the texture file.");
+                            StatusStripUpdate("Unsupported image for preview");
                         }
                         break;
                     }
@@ -838,18 +788,17 @@ namespace Unity_Studio
                 case 83: //AudioClip
                     {
                         AudioClip m_AudioClip = new AudioClip(asset, true);
-
-                        FMOD.RESULT result;
+                        if (m_AudioClip.m_AudioData == null)
+                            break;
                         FMOD.CREATESOUNDEXINFO exinfo = new FMOD.CREATESOUNDEXINFO();
 
                         exinfo.cbsize = Marshal.SizeOf(exinfo);
                         exinfo.length = (uint)m_AudioClip.m_Size;
 
-                        result = system.createSound(m_AudioClip.m_AudioData, (FMOD.MODE.OPENMEMORY | loopMode), ref exinfo, out sound);
+                        var result = system.createSound(m_AudioClip.m_AudioData, FMOD.MODE.OPENMEMORY | loopMode, ref exinfo, out sound);
                         if (ERRCHECK(result)) { break; }
 
-                        FMOD.Sound subsound;
-                        result = sound.getSubSound(0, out subsound);
+                        result = sound.getSubSound(0, out var subsound);
                         if (result == FMOD.RESULT.OK)
                         {
                             sound = subsound;
@@ -867,7 +816,7 @@ namespace Unity_Studio
                         if (ERRCHECK(result)) { break; }
 
                         FMODinfoLabel.Text = FMODfrequency + " Hz";
-                        FMODtimerLabel.Text = "0:0.0 / " + (FMODlenms / 1000 / 60) + ":" + (FMODlenms / 1000 % 60) + "." + (FMODlenms / 10 % 100);
+                        FMODtimerLabel.Text = $"0:0.0 / {FMODlenms / 1000 / 60}:{FMODlenms / 1000 % 60}.{FMODlenms / 10 % 100}";
                         break;
                     }
                 #endregion
@@ -877,6 +826,7 @@ namespace Unity_Studio
                         Shader m_TextAsset = new Shader(asset, true);
                         string m_Script_Text = Encoding.UTF8.GetString(m_TextAsset.m_Script);
                         m_Script_Text = Regex.Replace(m_Script_Text, "(?<!\r)\n", "\r\n");
+                        m_Script_Text = m_Script_Text.Replace("\0", "\\0");
                         textPreviewBox.Text = m_Script_Text;
                         textPreviewBox.Visible = true;
                         break;
@@ -962,28 +912,48 @@ namespace Unity_Studio
                 #region Mesh
                 case 43: //Mesh
                     {
-                        glControl1.Visible = true;
-                        viewMatrixData = new Matrix4[] {
-                            Matrix4.Identity
-                            * Matrix4.CreateTranslation( 0.0f, -1.0f, 0.0f )
-                            * Matrix4.CreateRotationY(-90.0f)};
                         var m_Mesh = new Mesh(asset, true);
                         if (m_Mesh.m_VertexCount > 0)
                         {
+                            glControl1.Visible = true;
+                            viewMatrixData = Matrix4.CreateRotationY(-(float)Math.PI / 4) * Matrix4.CreateRotationX(-(float)Math.PI / 6);
                             #region Vertices
                             int count = 3;
                             if (m_Mesh.m_Vertices.Length == m_Mesh.m_VertexCount * 4)
                             {
                                 count = 4;
                             }
-                            vertexData = new OpenTK.Vector3[m_Mesh.m_VertexCount];
+                            vertexData = new Vector3[m_Mesh.m_VertexCount];
+                            // Calculate Bounding
+                            float[] min = new float[3];
+                            float[] max = new float[3];
+                            for (int i = 0; i < 3; i++)
+                            {
+                                min[i] = m_Mesh.m_Vertices[i];
+                                max[i] = m_Mesh.m_Vertices[i];
+                            }
                             for (int v = 0; v < m_Mesh.m_VertexCount; v++)
                             {
-                                vertexData[v] = new OpenTK.Vector3(
+                                for (int i = 0; i < 3; i++)
+                                {
+                                    min[i] = Math.Min(min[i], m_Mesh.m_Vertices[v * count + i]);
+                                    max[i] = Math.Max(max[i], m_Mesh.m_Vertices[v * count + i]);
+                                }
+                                vertexData[v] = new Vector3(
                                     m_Mesh.m_Vertices[v * count],
                                     m_Mesh.m_Vertices[v * count + 1],
                                     m_Mesh.m_Vertices[v * count + 2]);
                             }
+
+                            // Calculate modelMatrix
+                            Vector3 dist = Vector3.One, offset = Vector3.Zero;
+                            for (int i = 0; i < 3; i++)
+                            {
+                                dist[i] = max[i] - min[i];
+                                offset[i] = (max[i] + min[i]) / 2;
+                            }
+                            float d = Math.Max(1e-5f, dist.Length);
+                            modelMatrixData = Matrix4.CreateTranslation(-offset) * Matrix4.CreateScale(2f / d);
                             #endregion
                             #region Indicies
                             indiceData = new int[m_Mesh.m_Indices.Count];
@@ -998,52 +968,75 @@ namespace Unity_Studio
                             if (m_Mesh.m_Normals != null && m_Mesh.m_Normals.Length > 0)
                             {
                                 if (m_Mesh.m_Normals.Length == m_Mesh.m_VertexCount * 3)
-                                {
                                     count = 3;
-                                }
                                 else if (m_Mesh.m_Normals.Length == m_Mesh.m_VertexCount * 4)
-                                {
                                     count = 4;
-                                }
-
-                                normalData = new OpenTK.Vector3[m_Mesh.m_VertexCount];
+                                normalData = new Vector3[m_Mesh.m_VertexCount];
                                 for (int n = 0; n < m_Mesh.m_VertexCount; n++)
                                 {
-                                    normalData[n] = new OpenTK.Vector3(
+                                    normalData[n] = new Vector3(
                                         m_Mesh.m_Normals[n * count],
                                         m_Mesh.m_Normals[n * count + 1],
                                         m_Mesh.m_Normals[n * count + 2]);
                                 }
                             }
+                            else
+                                normalData = null;
+                            // calculate normal by ourself
+                            normal2Data = new Vector3[m_Mesh.m_VertexCount];
+                            int[] normalCalculatedCount = new int[m_Mesh.m_VertexCount];
+                            for (int i = 0; i < m_Mesh.m_VertexCount; i++)
+                            {
+                                normal2Data[i] = Vector3.Zero;
+                                normalCalculatedCount[i] = 0;
+                            }
+                            for (int i = 0; i < m_Mesh.m_Indices.Count; i = i + 3)
+                            {
+                                Vector3 dir1 = vertexData[indiceData[i + 1]] - vertexData[indiceData[i]];
+                                Vector3 dir2 = vertexData[indiceData[i + 2]] - vertexData[indiceData[i]];
+                                Vector3 normal = Vector3.Cross(dir1, dir2);
+                                normal.Normalize();
+                                for (int j = 0; j < 3; j++)
+                                {
+                                    normal2Data[indiceData[i + j]] += normal;
+                                    normalCalculatedCount[indiceData[i + j]]++;
+                                }
+                            }
+                            for (int i = 0; i < m_Mesh.m_VertexCount; i++)
+                            {
+                                if (normalCalculatedCount[i] == 0)
+                                    normal2Data[i] = new Vector3(0, 1, 0);
+                                else
+                                    normal2Data[i] /= normalCalculatedCount[i];
+                            }
                             #endregion
                             #region Colors
                             if (m_Mesh.m_Colors == null)
                             {
-                                colorData = new OpenTK.Vector4[m_Mesh.m_VertexCount];
+                                colorData = new Vector4[m_Mesh.m_VertexCount];
                                 for (int c = 0; c < m_Mesh.m_VertexCount; c++)
                                 {
-                                    colorData[c] = new OpenTK.Vector4(
-                                        0.5f, 0.5f, 0.5f, 1.0f);
+                                    colorData[c] = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
                                 }
                             }
                             else if (m_Mesh.m_Colors.Length == m_Mesh.m_VertexCount * 3)
                             {
-                                colorData = new OpenTK.Vector4[m_Mesh.m_VertexCount];
+                                colorData = new Vector4[m_Mesh.m_VertexCount];
                                 for (int c = 0; c < m_Mesh.m_VertexCount; c++)
                                 {
-                                    colorData[c] = new OpenTK.Vector4(
-                                        m_Mesh.m_Colors[c * 4],
-                                        m_Mesh.m_Colors[c * 4 + 1],
-                                        m_Mesh.m_Colors[c * 4 + 2],
+                                    colorData[c] = new Vector4(
+                                        m_Mesh.m_Colors[c * 3],
+                                        m_Mesh.m_Colors[c * 3 + 1],
+                                        m_Mesh.m_Colors[c * 3 + 2],
                                         1.0f);
                                 }
                             }
                             else
                             {
-                                colorData = new OpenTK.Vector4[m_Mesh.m_VertexCount];
+                                colorData = new Vector4[m_Mesh.m_VertexCount];
                                 for (int c = 0; c < m_Mesh.m_VertexCount; c++)
                                 {
-                                    colorData[c] = new OpenTK.Vector4(
+                                    colorData[c] = new Vector4(
                                     m_Mesh.m_Colors[c * 4],
                                     m_Mesh.m_Colors[c * 4 + 1],
                                     m_Mesh.m_Colors[c * 4 + 2],
@@ -1051,18 +1044,52 @@ namespace Unity_Studio
                                 }
                             }
                             #endregion
+                            createVAO();
                         }
-                        createVAO();
-                        StatusStripUpdate("Using OpenGL Version: " + GL.GetString(StringName.Version)
-                                        + "  |  'T'=Start/Stop Rotation | 'WASD'=Manual Rotate | "
-                                        + "'Shift WASD'=Move | 'Q/E'=Zoom | 'Ctl W' =Wireframe");
+                        StatusStripUpdate("Using OpenGL Version: " + GL.GetString(StringName.Version) + "\n"
+                                        + "'T'=Start/Stop Rotation | 'WASD'=Manual Rotate | 'Shift WASD'=Move | 'Q/E'=Zoom \n"
+                                        + "'Ctrl W'=Wireframe | 'Ctrl S'=Shade | 'Ctrl N'=ReNormal ");
                     }
                     break;
                 #endregion
-
+                #region VideoClip and MovieTexture
+                case 329: //VideoClip
+                case 152: //MovieTexture
+                    {
+                        StatusStripUpdate("Only supported export.");
+                        break;
+                    }
+                #endregion
+                #region Sprite
+                case 213: //Sprite
+                    {
+                        imageTexture?.Dispose();
+                        imageTexture = GetImageFromSprite(asset);
+                        if (imageTexture != null)
+                        {
+                            previewPanel.BackgroundImage = imageTexture;
+                            if (imageTexture.Width > previewPanel.Width || imageTexture.Height > previewPanel.Height)
+                                previewPanel.BackgroundImageLayout = ImageLayout.Zoom;
+                            else
+                                previewPanel.BackgroundImageLayout = ImageLayout.Center;
+                        }
+                        else
+                        {
+                            StatusStripUpdate("Unsupported sprite for preview");
+                        }
+                        break;
+                    }
+                #endregion
                 default:
                     {
-                        StatusStripUpdate("Only supported export the raw file.");
+                        var str = asset.ViewStruct();
+                        if (str != null)
+                        {
+                            textPreviewBox.Text = str;
+                            textPreviewBox.Visible = true;
+                        }
+                        else
+                            StatusStripUpdate("Only supported export the raw file.");
                         break;
                     }
             }
@@ -1072,25 +1099,19 @@ namespace Unity_Studio
         {
             FMODreset();
 
-            FMOD.RESULT result;
-            uint version = 0;
-
-            result = FMOD.Factory.System_Create(out system);
+            var result = FMOD.Factory.System_Create(out system);
             if (ERRCHECK(result)) { return; }
 
-            result = system.getVersion(out version);
+            result = system.getVersion(out var version);
             ERRCHECK(result);
             if (version < FMOD.VERSION.number)
             {
-                MessageBox.Show("Error!  You are using an old version of FMOD " + version.ToString("X") + ".  This program requires " + FMOD.VERSION.number.ToString("X") + ".");
+                MessageBox.Show($"Error!  You are using an old version of FMOD {version:X}.  This program requires {FMOD.VERSION.number:X}.");
                 Application.Exit();
             }
 
-            result = system.init(1, FMOD.INITFLAGS.NORMAL, (IntPtr)null);
+            result = system.init(1, FMOD.INITFLAGS.NORMAL, IntPtr.Zero);
             if (ERRCHECK(result)) { return; }
-
-            //result = system.getMasterChannelGroup(out channelGroup);
-            //if (ERRCHECK(result)) { return; }
 
             result = system.getMasterSoundGroup(out masterSoundGroup);
             if (ERRCHECK(result)) { return; }
@@ -1107,22 +1128,20 @@ namespace Unity_Studio
             FMODstatusLabel.Text = "Stopped";
             FMODinfoLabel.Text = "";
 
-            if (sound != null)
+            if (sound != null && sound.isValid())
             {
                 var result = sound.release();
-                if (result != FMOD.RESULT.OK) { StatusStripUpdate("FMOD error! " + result + " - " + FMOD.Error.String(result)); }
+                ERRCHECK(result);
                 sound = null;
             }
         }
 
         private void FMODplayButton_Click(object sender, EventArgs e)
         {
-            FMOD.RESULT result;
             if (sound != null && channel != null)
             {
                 timer.Start();
-                bool playing = false;
-                result = channel.isPlaying(out playing);
+                var result = channel.isPlaying(out var playing);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
@@ -1143,7 +1162,6 @@ namespace Unity_Studio
                     result = system.playSound(sound, null, false, out channel);
                     if (ERRCHECK(result)) { return; }
                     FMODstatusLabel.Text = "Playing";
-                    //FMODinfoLabel.Text = FMODfrequency.ToString();
 
                     if (FMODprogressBar.Value > 0)
                     {
@@ -1162,14 +1180,9 @@ namespace Unity_Studio
 
         private void FMODpauseButton_Click(object sender, EventArgs e)
         {
-            FMOD.RESULT result;
-
             if (sound != null && channel != null)
             {
-                bool playing = false;
-                bool paused = false;
-
-                result = channel.isPlaying(out playing);
+                var result = channel.isPlaying(out var playing);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
@@ -1177,17 +1190,14 @@ namespace Unity_Studio
 
                 if (playing)
                 {
-                    result = channel.getPaused(out paused);
+                    result = channel.getPaused(out var paused);
                     if (ERRCHECK(result)) { return; }
                     result = channel.setPaused(!paused);
                     if (ERRCHECK(result)) { return; }
 
-                    //FMODstatusLabel.Text = (!paused ? "Paused" : playing ? "Playing" : "Stopped");
-                    //FMODpauseButton.Text = (!paused ? "Resume" : playing ? "Pause" : "Pause");
-
                     if (paused)
                     {
-                        FMODstatusLabel.Text = (playing ? "Playing" : "Stopped");
+                        FMODstatusLabel.Text = "Playing";
                         FMODpauseButton.Text = "Pause";
                         timer.Start();
                     }
@@ -1203,11 +1213,9 @@ namespace Unity_Studio
 
         private void FMODstopButton_Click(object sender, EventArgs e)
         {
-            FMOD.RESULT result;
             if (channel != null)
             {
-                bool playing = false;
-                result = channel.isPlaying(out playing);
+                var result = channel.isPlaying(out var playing);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
@@ -1232,14 +1240,7 @@ namespace Unity_Studio
         {
             FMOD.RESULT result;
 
-            if (FMODloopButton.Checked)
-            {
-                loopMode = FMOD.MODE.LOOP_NORMAL;
-            }
-            else
-            {
-                loopMode = FMOD.MODE.LOOP_OFF;
-            }
+            loopMode = FMODloopButton.Checked ? FMOD.MODE.LOOP_NORMAL : FMOD.MODE.LOOP_OFF;
 
             if (sound != null)
             {
@@ -1249,15 +1250,13 @@ namespace Unity_Studio
 
             if (channel != null)
             {
-                bool playing = false;
-                result = channel.isPlaying(out playing);
+                result = channel.isPlaying(out var playing);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
                 }
 
-                bool paused = false;
-                result = channel.getPaused(out paused);
+                result = channel.getPaused(out var paused);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
@@ -1273,10 +1272,9 @@ namespace Unity_Studio
 
         private void FMODvolumeBar_ValueChanged(object sender, EventArgs e)
         {
-            FMOD.RESULT result;
             FMODVolume = Convert.ToSingle(FMODvolumeBar.Value) / 10;
 
-            result = masterSoundGroup.setVolume(FMODVolume);
+            var result = masterSoundGroup.setVolume(FMODVolume);
             if (ERRCHECK(result)) { return; }
         }
 
@@ -1285,7 +1283,7 @@ namespace Unity_Studio
             if (channel != null)
             {
                 uint newms = FMODlenms / 1000 * (uint)FMODprogressBar.Value;
-                FMODtimerLabel.Text = (newms / 1000 / 60) + ":" + (newms / 1000 % 60) + "." + (newms / 10 % 100) + "/" + (FMODlenms / 1000 / 60) + ":" + (FMODlenms / 1000 % 60) + "." + (FMODlenms / 10 % 100);
+                FMODtimerLabel.Text = $"{newms / 1000 / 60}:{newms / 1000 % 60}.{newms / 10 % 100}/{FMODlenms / 1000 / 60}:{FMODlenms / 1000 % 60}.{FMODlenms / 10 % 100}";
             }
         }
 
@@ -1298,19 +1296,16 @@ namespace Unity_Studio
         {
             if (channel != null)
             {
-                FMOD.RESULT result;
-
                 uint newms = FMODlenms / 1000 * (uint)FMODprogressBar.Value;
 
-                result = channel.setPosition(newms, FMOD.TIMEUNIT.MS);
+                var result = channel.setPosition(newms, FMOD.TIMEUNIT.MS);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
                 }
 
-                bool playing = false;
 
-                result = channel.isPlaying(out playing);
+                result = channel.isPlaying(out var playing);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     if (ERRCHECK(result)) { return; }
@@ -1322,14 +1317,13 @@ namespace Unity_Studio
 
         private void timer_Tick(object sender, EventArgs e)
         {
-            FMOD.RESULT result;
             uint ms = 0;
             bool playing = false;
             bool paused = false;
 
             if (channel != null)
             {
-                result = channel.getPosition(out ms, FMOD.TIMEUNIT.MS);
+                var result = channel.getPosition(out ms, FMOD.TIMEUNIT.MS);
                 if ((result != FMOD.RESULT.OK) && (result != FMOD.RESULT.ERR_INVALID_HANDLE))
                 {
                     ERRCHECK(result);
@@ -1348,10 +1342,9 @@ namespace Unity_Studio
                 }
             }
 
-            //statusBar.Text = "Time " + (ms / 1000 / 60) + ":" + (ms / 1000 % 60) + ":" + (ms / 10 % 100) + "/" + (lenms / 1000 / 60) + ":" + (lenms / 1000 % 60) + ":" + (lenms / 10 % 100) + " : " + (paused ? "Paused " : playing ? "Playing" : "Stopped");
-            FMODtimerLabel.Text = (ms / 1000 / 60) + ":" + (ms / 1000 % 60) + "." + (ms / 10 % 100) + " / " + (FMODlenms / 1000 / 60) + ":" + (FMODlenms / 1000 % 60) + "." + (FMODlenms / 10 % 100);
+            FMODtimerLabel.Text = $"{ms / 1000 / 60}:{ms / 1000 % 60}.{ms / 10 % 100} / {FMODlenms / 1000 / 60}:{FMODlenms / 1000 % 60}.{FMODlenms / 10 % 100}";
             FMODprogressBar.Value = (int)(ms * 1000 / FMODlenms);
-            FMODstatusLabel.Text = (paused ? "Paused " : playing ? "Playing" : "Stopped");
+            FMODstatusLabel.Text = paused ? "Paused " : playing ? "Playing" : "Stopped";
 
             if (system != null && channel != null)
             {
@@ -1363,24 +1356,21 @@ namespace Unity_Studio
         {
             if (result != FMOD.RESULT.OK)
             {
-                //FMODinit();
                 FMODreset();
-                StatusStripUpdate("FMOD error! " + result + " - " + FMOD.Error.String(result));
-                //Environment.Exit(-1);
+                StatusStripUpdate($"FMOD error! {result} - {FMOD.Error.String(result)}");
                 return true;
             }
-            else { return false; }
+            return false;
         }
 
         private void all3DObjectssplitToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (sceneTreeView.Nodes.Count > 0)
             {
-                if (saveFolderDialog1.ShowDialog() == DialogResult.OK)
+                var saveFolderDialog1 = new OpenFolderDialog();
+                if (saveFolderDialog1.ShowDialog(this) == DialogResult.OK)
                 {
-                    var savePath = saveFolderDialog1.FileName;
-                    if (Path.GetFileName(savePath) == "Select folder or write folder name to create")
-                    { savePath = Path.GetDirectoryName(saveFolderDialog1.FileName); }
+                    var savePath = saveFolderDialog1.Folder;
                     savePath = savePath + "\\";
                     switch ((bool)Properties.Settings.Default["showExpOpt"])
                     {
@@ -1395,6 +1385,7 @@ namespace Unity_Studio
                                 //防止主界面假死
                                 ThreadPool.QueueUserWorkItem(delegate
                                 {
+                                    Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
                                     sceneTreeView.Invoke(new Action(() =>
                                     {
                                         //挂起控件防止更新
@@ -1417,6 +1408,8 @@ namespace Unity_Studio
                                                 var filename = j.Text + DateTime.Now.ToString("_mm_ss_ffff");
                                                 //选中它和它的子节点
                                                 sceneTreeView.Invoke(new Action(() => j.Checked = true));
+                                                //处理非法文件名
+                                                filename = FixFileName(filename);
                                                 //导出FBX
                                                 WriteFBX(savePath + filename + ".fbx", false);
                                                 //取消选中
@@ -1442,7 +1435,7 @@ namespace Unity_Studio
         {
             if (sceneTreeView.Nodes.Count > 0)
             {
-                bool exportSwitch = (((ToolStripItem)sender).Name == "exportAll3DMenuItem") ? true : false;
+                bool exportSwitch = ((ToolStripItem)sender).Name == "exportAll3DMenuItem";
 
 
                 var timestamp = DateTime.Now;
@@ -1478,33 +1471,33 @@ namespace Unity_Studio
 
         private void ExportAssets_Click(object sender, EventArgs e)
         {
-            if (exportableAssets.Count > 0 && saveFolderDialog1.ShowDialog() == DialogResult.OK)
+            var saveFolderDialog1 = new OpenFolderDialog();
+            if (exportableAssets.Count > 0 && saveFolderDialog1.ShowDialog(this) == DialogResult.OK)
             {
                 timer.Stop();
                 List<AssetPreloadData> toExportAssets = null;
-                if (((ToolStripItem)sender).Name == "exportAllAssetsMenuItem")
+                switch (((ToolStripItem)sender).Name)
                 {
-                    toExportAssets = exportableAssets;
-                }
-                else if (((ToolStripItem)sender).Name == "exportFilteredAssetsMenuItem")
-                {
-                    toExportAssets = visibleAssets;
-                }
-                else if (((ToolStripItem)sender).Name == "exportSelectedAssetsMenuItem")
-                {
-                    toExportAssets = new List<AssetPreloadData>(assetListView.SelectedIndices.Count);
-                    foreach (var i in assetListView.SelectedIndices.OfType<int>())
-                    {
-                        toExportAssets.Add((AssetPreloadData)assetListView.Items[i]);
-                    }
+                    case "exportAllAssetsMenuItem":
+                        toExportAssets = exportableAssets;
+                        break;
+                    case "exportFilteredAssetsMenuItem":
+                        toExportAssets = visibleAssets;
+                        break;
+                    case "exportSelectedAssetsMenuItem":
+                        toExportAssets = new List<AssetPreloadData>(assetListView.SelectedIndices.Count);
+                        foreach (var i in assetListView.SelectedIndices.OfType<int>())
+                        {
+                            toExportAssets.Add((AssetPreloadData)assetListView.Items[i]);
+                        }
+                        break;
                 }
                 int assetGroupSelectedIndex = assetGroupOptions.SelectedIndex;
 
                 ThreadPool.QueueUserWorkItem(delegate
                 {
-                    var savePath = saveFolderDialog1.FileName;
-                    if (Path.GetFileName(savePath) == "Select folder or write folder name to create")
-                    { savePath = Path.GetDirectoryName(saveFolderDialog1.FileName); }
+                    Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
+                    var savePath = saveFolderDialog1.Folder;
 
                     int toExport = toExportAssets.Count;
                     int exportedCount = 0;
@@ -1518,71 +1511,72 @@ namespace Unity_Studio
                         string exportpath = savePath + "\\";
                         if (assetGroupSelectedIndex == 1) { exportpath += Path.GetFileNameWithoutExtension(asset.sourceFile.filePath) + "_export\\"; }
                         else if (assetGroupSelectedIndex == 0) { exportpath = savePath + "\\" + asset.TypeString + "\\"; }
-                        StatusStripUpdate("Exporting " + asset.TypeString + ": " + asset.Text);
-                        //AudioClip and Texture2D extensions are set when the list is built
-                        //so their overwrite tests can be done without loading them again
-
-                        Console.WriteLine(asset.Text);
-
+                        StatusStripUpdate($"Exporting {asset.TypeString}: {asset.Text}");
                         switch (asset.Type2)
                         {
-                            case 28:
-                                if (ExportTexture(asset, exportpath, true))
+                            case 28: //Texture2D
+                                if (ExportTexture2D(asset, exportpath, true))
                                 {
                                     exportedCount++;
                                 }
                                 break;
-                            case 83:
-                                if (ExportAudioClip(asset, exportpath + asset.Text, asset.extension))
+                            case 83: //AudioClip
+                                if (ExportAudioClip(asset, exportpath))
                                 {
                                     exportedCount++;
                                 }
                                 break;
-                            case 48:
-                                Shader m_Shader = new Shader(asset, true);
-                                if (!ExportFileExists(exportpath + asset.Text + asset.extension))
+                            case 48: //Shader
+                                if (ExportShader(asset, exportpath))
                                 {
-                                    ExportShader(m_Shader, exportpath + asset.Text + ".txt");
                                     exportedCount++;
                                 }
                                 break;
-                            case 49:
-                                TextAsset m_TextAsset = new TextAsset(asset, true);
-                                if (!ExportFileExists(exportpath + asset.Text + asset.extension))
+                            case 49: //TextAsset
+                                if (ExportTextAsset(asset, exportpath))
                                 {
-                                    ExportText(m_TextAsset, exportpath + asset.Text + asset.extension);
                                     exportedCount++;
                                 }
                                 break;
-                            case 114:
-                                MonoBehaviour m_MonoBehaviour = new MonoBehaviour(asset, true);
-                                if (!ExportFileExists(exportpath + asset.Text + asset.extension))
+                            case 114: //MonoBehaviour
+                                if (ExportMonoBehaviour(asset, exportpath))
                                 {
-                                    ExportMonoBehaviour(m_MonoBehaviour, exportpath + asset.Text + asset.extension);
                                     exportedCount++;
                                 }
                                 break;
-                            case 128:
-                                unityFont m_Font = new unityFont(asset, true);
-                                if (!ExportFileExists(exportpath + asset.Text + asset.extension))
+                            case 128: //Font
+                                if (ExportFont(asset, exportpath))
                                 {
-                                    ExportFont(m_Font, exportpath + asset.Text + asset.extension);
                                     exportedCount++;
                                 }
                                 break;
                             case 43: //Mesh
-                                Mesh m_Mesh = new Mesh(asset, true);                                
-                                if (!ExportFileExists(exportpath + asset.Text + asset.extension))
+                                if (ExportMesh(asset, exportpath))
                                 {
-                                    ExportMesh(m_Mesh, exportpath + asset.Text);
                                     exportedCount++;
                                 }
-                                
+                                break;
+                            case 329: //VideoClip
+                                if (ExportVideoClip(asset, exportpath))
+                                {
+                                    exportedCount++;
+                                }
+                                break;
+                            case 152: //MovieTexture
+                                if (ExportMovieTexture(asset, exportpath))
+                                {
+                                    exportedCount++;
+                                }
+                                break;
+                            case 213: //Sprite
+                                if (ExportSprite(asset, exportpath))
+                                {
+                                    exportedCount++;
+                                }
                                 break;
                             default:
-                                if (!ExportFileExists(exportpath + asset.Text + asset.extension))
+                                if (ExportRawFile(asset, exportpath))
                                 {
-                                    ExportRawFile(asset, exportpath + asset.Text + asset.extension);
                                     exportedCount++;
                                 }
                                 break;
@@ -1590,18 +1584,18 @@ namespace Unity_Studio
                         }
                         ProgressBarPerformStep();
                     }
-                    string statusText = "";
+                    string statusText;
                     switch (exportedCount)
                     {
                         case 0:
                             statusText = "Nothing exported.";
                             break;
                         default:
-                            statusText = "Finished exporting " + exportedCount + " assets.";
+                            statusText = $"Finished exporting {exportedCount} assets.";
                             break;
                     }
 
-                    if (toExport > exportedCount) { statusText += " " + (toExport - exportedCount) + " assets skipped (not extractable or files already exist)"; }
+                    if (toExport > exportedCount) { statusText += $" {toExport - exportedCount} assets skipped (not extractable or files already exist)"; }
 
                     StatusStripUpdate(statusText);
 
@@ -1678,6 +1672,7 @@ namespace Unity_Studio
         {
             Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
             InitializeComponent();
+            displayOriginalName.Checked = (bool)Properties.Settings.Default["displayOriginalName"];
             displayAll.Checked = (bool)Properties.Settings.Default["displayAll"];
             displayInfo.Checked = (bool)Properties.Settings.Default["displayInfo"];
             enablePreview.Checked = (bool)Properties.Settings.Default["enablePreview"];
@@ -1694,10 +1689,9 @@ namespace Unity_Studio
 
         private void timerOpenTK_Tick(object sender, EventArgs e)
         {
-            if (glControl1.Visible == true)
+            if (glControl1.Visible)
             {
-                viewMatrixData[0] *= Matrix4.CreateRotationY(-0.1f);
-                GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData[0]);
+                viewMatrixData *= Matrix4.CreateRotationY(-0.1f);
                 glControl1.Invalidate();
             }
         }
@@ -1707,13 +1701,24 @@ namespace Unity_Studio
             GL.Viewport(0, 0, glControl1.ClientSize.Width, glControl1.ClientSize.Height);
             GL.ClearColor(Color.CadetBlue);
             pgmID = GL.CreateProgram();
-            loadShader("vs.glsl", ShaderType.VertexShader, pgmID, out vsID);
-            loadShader("fs.glsl", ShaderType.FragmentShader, pgmID, out fsID);
+            loadShader("vs", ShaderType.VertexShader, pgmID, out int vsID);
+            loadShader("fs", ShaderType.FragmentShader, pgmID, out int fsID);
             GL.LinkProgram(pgmID);
-            GL.UseProgram(pgmID);
+
+            pgmColorID = GL.CreateProgram();
+            loadShader("vs", ShaderType.VertexShader, pgmColorID, out vsID);
+            loadShader("fsColor", ShaderType.FragmentShader, pgmColorID, out fsID);
+            GL.LinkProgram(pgmColorID);
+
+            pgmBlackID = GL.CreateProgram();
+            loadShader("vs", ShaderType.VertexShader, pgmBlackID, out vsID);
+            loadShader("fsBlack", ShaderType.FragmentShader, pgmBlackID, out fsID);
+            GL.LinkProgram(pgmBlackID);
+
             attributeVertexPosition = GL.GetAttribLocation(pgmID, "vertexPosition");
             attributeNormalDirection = GL.GetAttribLocation(pgmID, "normalDirection");
-            attributeVertexColor = GL.GetAttribLocation(pgmID, "vertexColor");
+            attributeVertexColor = GL.GetAttribLocation(pgmColorID, "vertexColor");
+            uniformModelMatrix = GL.GetUniformLocation(pgmID, "modelMatrix");
             uniformViewMatrix = GL.GetUniformLocation(pgmID, "viewMatrix");
             glControl1.Visible = false;
         }
@@ -1721,46 +1726,44 @@ namespace Unity_Studio
         private void loadShader(string filename, ShaderType type, int program, out int address)
         {
             address = GL.CreateShader(type);
-            using (StreamReader sr = new StreamReader(filename))
-            {
-                GL.ShaderSource(address, sr.ReadToEnd());
-            }
+            var str = (string)Properties.Resources.ResourceManager.GetObject(filename);
+            GL.ShaderSource(address, str);
             GL.CompileShader(address);
             GL.AttachShader(program, address);
             GL.DeleteShader(address);
         }
 
-        private void createVBO(int vboAddress, OpenTK.Vector3[] data, int address)
+        private void createVBO(out int vboAddress, Vector3[] data, int address)
         {
             GL.GenBuffers(1, out vboAddress);
             GL.BindBuffer(BufferTarget.ArrayBuffer, vboAddress);
-            GL.BufferData<OpenTK.Vector3>(BufferTarget.ArrayBuffer,
-                                    (IntPtr)(data.Length * OpenTK.Vector3.SizeInBytes),
+            GL.BufferData(BufferTarget.ArrayBuffer,
+                                    (IntPtr)(data.Length * Vector3.SizeInBytes),
                                     data,
                                     BufferUsageHint.StaticDraw);
             GL.VertexAttribPointer(address, 3, VertexAttribPointerType.Float, false, 0, 0);
             GL.EnableVertexAttribArray(address);
         }
 
-        private void createVBO(int vboAddress, OpenTK.Vector4[] data, int address)
+        private void createVBO(out int vboAddress, Vector4[] data, int address)
         {
             GL.GenBuffers(1, out vboAddress);
             GL.BindBuffer(BufferTarget.ArrayBuffer, vboAddress);
-            GL.BufferData<OpenTK.Vector4>(BufferTarget.ArrayBuffer,
-                                    (IntPtr)(data.Length * OpenTK.Vector4.SizeInBytes),
+            GL.BufferData(BufferTarget.ArrayBuffer,
+                                    (IntPtr)(data.Length * Vector4.SizeInBytes),
                                     data,
                                     BufferUsageHint.StaticDraw);
             GL.VertexAttribPointer(address, 4, VertexAttribPointerType.Float, false, 0, 0);
             GL.EnableVertexAttribArray(address);
         }
 
-        private void createVBO(int vboAddress, Matrix4[] data, int address)
+        private void createVBO(out int vboAddress, Matrix4 data, int address)
         {
             GL.GenBuffers(1, out vboAddress);
-            GL.UniformMatrix4(address, false, ref data[0]);
+            GL.UniformMatrix4(address, false, ref data);
         }
 
-        private void createEBO(int address, int[] data)
+        private void createEBO(out int address, int[] data)
         {
             GL.GenBuffers(1, out address);
             GL.BindBuffer(BufferTarget.ElementArrayBuffer, address);
@@ -1776,11 +1779,20 @@ namespace Unity_Studio
             GL.DeleteVertexArray(vao);
             GL.GenVertexArrays(1, out vao);
             GL.BindVertexArray(vao);
-            createVBO(vboPositions, vertexData, attributeVertexPosition);
-            createVBO(vboNormals, normalData, attributeNormalDirection);
-            createVBO(vboColors, colorData, attributeVertexColor);
-            createVBO(vboViewMatrix, viewMatrixData, uniformViewMatrix);
-            createEBO(eboElements, indiceData);
+            createVBO(out vboPositions, vertexData, attributeVertexPosition);
+            if (normalMode == 0)
+            {
+                createVBO(out vboNormals, normal2Data, attributeNormalDirection);
+            }
+            else
+            {
+                if (normalData != null)
+                    createVBO(out vboNormals, normalData, attributeNormalDirection);
+            }
+            createVBO(out vboColors, colorData, attributeVertexColor);
+            createVBO(out vboModelMatrix, modelMatrixData, uniformModelMatrix);
+            createVBO(out vboViewMatrix, viewMatrixData, uniformViewMatrix);
+            createEBO(out eboElements, indiceData);
             GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
             GL.BindVertexArray(0);
         }
@@ -1796,17 +1808,28 @@ namespace Unity_Studio
             glControl1.MakeCurrent();
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             GL.Enable(EnableCap.DepthTest);
-            GL.DepthFunc(DepthFunction.Less);
+            GL.DepthFunc(DepthFunction.Lequal);
             GL.BindVertexArray(vao);
-            if (wireFrameView == true)
+            if (wireFrameMode == 0 || wireFrameMode == 2)
             {
-                GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line); //Wireframe
-            }
-            else
-            {
+                GL.UseProgram(shadeMode == 0 ? pgmID : pgmColorID);
+                GL.UniformMatrix4(uniformModelMatrix, false, ref modelMatrixData);
+                GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData);
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+                GL.DrawElements(BeginMode.Triangles, indiceData.Length, DrawElementsType.UnsignedInt, 0);
             }
-            GL.DrawElements(BeginMode.Triangles, indiceData.Length, DrawElementsType.UnsignedInt, 0);
+            //Wireframe
+            if (wireFrameMode == 1 || wireFrameMode == 2)
+            {
+                GL.Enable(EnableCap.PolygonOffsetLine);
+                GL.PolygonOffset(-1, -1);
+                GL.UseProgram(pgmBlackID);
+                GL.UniformMatrix4(uniformModelMatrix, false, ref modelMatrixData);
+                GL.UniformMatrix4(uniformViewMatrix, false, ref viewMatrixData);
+                GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
+                GL.DrawElements(BeginMode.Triangles, indiceData.Length, DrawElementsType.UnsignedInt, 0);
+                GL.Disable(EnableCap.PolygonOffsetLine);
+            }
             GL.BindVertexArray(0);
             GL.Flush();
             glControl1.SwapBuffers();
@@ -1814,12 +1837,7 @@ namespace Unity_Studio
 
         private void resetForm()
         {
-            /*Properties.Settings.Default["uniqueNames"] = uniqueNamesMenuItem.Checked;
-            Properties.Settings.Default["enablePreview"] = enablePreviewMenuItem.Checked;
-            Properties.Settings.Default["displayInfo"] = displayAssetInfoMenuItem.Checked;
-            Properties.Settings.Default.Save();*/
-
-            base.Text = "Unity Studio";
+            Text = "Unity Studio";
 
             unityFiles.Clear();
             assetsfileList.Clear();
@@ -1831,13 +1849,12 @@ namespace Unity_Studio
 
             assetListView.VirtualListSize = 0;
             assetListView.Items.Clear();
-            //assetListView.Groups.Clear();
 
             classesListView.Items.Clear();
             classesListView.Groups.Clear();
 
             previewPanel.BackgroundImage = Properties.Resources.preview;
-            previewPanel.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Center;
+            previewPanel.BackgroundImageLayout = ImageLayout.Center;
             assetInfoLabel.Visible = false;
             assetInfoLabel.Text = null;
             textPreviewBox.Visible = false;
@@ -1850,9 +1867,32 @@ namespace Unity_Studio
             reverseSort = false;
             enableFiltering = false;
 
-            //FMODinit();
             FMODreset();
+        }
 
+        private void showOriginalFileToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var args = $"/select, {selectasset.sourceFile.bundlePath ?? selectasset.sourceFile.filePath}";
+            var pfi = new ProcessStartInfo("explorer.exe", args);
+            Process.Start(pfi);
+        }
+
+        private void assetListView_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                selectasset = (AssetPreloadData)assetListView.Items[assetListView.SelectedIndices[0]];
+                contextMenuStrip1.Show(assetListView, e.X, e.Y);
+            }
+        }
+
+        private void glControl1_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if (glControl1.Visible)
+            {
+                viewMatrixData *= Matrix4.CreateScale(1 + e.Delta / 1000f);
+                glControl1.Invalidate();
+            }
         }
     }
 }

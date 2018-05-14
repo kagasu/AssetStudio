@@ -24,9 +24,9 @@ Y Top                          Y Up
 |   /                          |
 | /                            |
 +--------X           X--------+
-        Right       to the       \
-                    left           \
-                                     Z towards viewer
+		Right       to the       \
+					left           \
+									 Z towards viewer
 
 3ds Max is right-handed with Z up
 Aircraft              View
@@ -36,7 +36,7 @@ Z Top                          Z Up (Viewcube Top)
 |   /                from  \   |
 | /                  viewer  \ |
 +--------(-X)       (VC Back)  +--------X to the right
-         Right                         (Viewcube Right)
+		 Right                         (Viewcube Right)
 
 
 
@@ -48,10 +48,10 @@ Y Top                 Y Up (Viewcube Top)
 |   /                 |
 | /                   |
 +--------(-X)         +--------X to the right
-         Right          \        (Viewcube Right)
-                          \
-                            Z towards viewer
-                              (Viewcube Front)
+		 Right          \        (Viewcube Right)
+						  \
+							Z towards viewer
+							  (Viewcube Front)
 
 Exporting FBX from Max, vertex components are ALWAYS written as they are in max: X Y Z.
 The Axis option only affects GlobalSettings and PreRotation in the FBX file.
@@ -102,7 +102,7 @@ namespace Unity_Studio
 {
     public class Mesh
     {
-        private EndianStream a_Stream;
+        private EndianBinaryReader a_Stream;
         public string m_Name;
         public List<SubMesh> m_SubMeshes = new List<SubMesh>();
         public List<uint> m_Indices = new List<uint>(); //use a list because I don't always know the facecount for triangle strips
@@ -166,7 +166,7 @@ namespace Unity_Studio
             public byte m_BitSize;
         }
 
-        public float bytesToFloat (byte[] inputBytes)
+        public float bytesToFloat(byte[] inputBytes)
         {
             float result = 0;
             if (a_Stream.endian == EndianType.BigEndian) { Array.Reverse(inputBytes); }
@@ -187,16 +187,16 @@ namespace Unity_Studio
             return result;
         }
 
-        public uint[] UnpackBitVector (PackedBitVector pakData)
+        public uint[] UnpackBitVector(PackedBitVector pakData)
         {
             uint[] unpackedVectors = new uint[pakData.m_NumItems];
             //int bitmax = 0;//used to convert int value to float
             //for (int b = 0; b < pakData.m_BitSize; b++) { bitmax |= (1 << b); }
-            
+
             //the lazy way
             //split data into groups of "aligned" bytes i.e. 8 packed values per group
             //I could calculate optimized group size based on BitSize, but this is the lazy way
-            
+
             if (pakData.m_BitSize == 0)
             {
                 pakData.m_BitSize = (byte)((pakData.m_Data.Length * 8) / pakData.m_NumItems);
@@ -257,35 +257,35 @@ namespace Unity_Studio
             //compute bit position in m_Data for each value
             /*byte[] value = new byte[4] { 0, 0, 0, 0 };
 
-            int byteCount = pakData.m_BitSize / 8;//bytes in single value
-            int bitCount = pakData.m_BitSize % 8;
+			int byteCount = pakData.m_BitSize / 8;//bytes in single value
+			int bitCount = pakData.m_BitSize % 8;
 
-            for (int v = 0; v < pakData.m_NumItems; v++)
-            {
-                if ((bitCount * v) % 8 == 0) //bitstream is "aligned"
-                {//does this make sense if I'm gonna compute unaligned anywhay?
-                    for (int b = 0; b < byteCount; b++)
-                    {
-                        value[b] = pakData.m_Data[b + v * (byteCount+1)];
-                    }
+			for (int v = 0; v < pakData.m_NumItems; v++)
+			{
+				if ((bitCount * v) % 8 == 0) //bitstream is "aligned"
+				{//does this make sense if I'm gonna compute unaligned anywhay?
+					for (int b = 0; b < byteCount; b++)
+					{
+						value[b] = pakData.m_Data[b + v * (byteCount+1)];
+					}
 
-                    if (byteCount < 4) //shouldn't it be always?
-                    {
-                        byte lastByte = pakData.m_Data[bitCount * v / 8];
+					if (byteCount < 4) //shouldn't it be always?
+					{
+						byte lastByte = pakData.m_Data[bitCount * v / 8];
 
-                        for (int b = 0; b < bitCount; b++)//no
-                        {
-                            //set bit in val[byteCount+1]
-                        }
-                    }
-                }
-                else
-                {
-                    //god knows
-                }
+						for (int b = 0; b < bitCount; b++)//no
+						{
+							//set bit in val[byteCount+1]
+						}
+					}
+				}
+				else
+				{
+					//god knows
+				}
 
-                unpackedVectors[v] = BitConverter.ToSingle(value, 0);
-            }*/
+				unpackedVectors[v] = BitConverter.ToSingle(value, 0);
+			}*/
 
 
             //first I split the data into byte-aligned arrays
@@ -293,35 +293,35 @@ namespace Unity_Studio
             //then no point in dividing?
             /*int groupSize = byteCount + (bitCount + 7)/8;
 
-            int groups = pakData.m_Data.Length / groupSize;
-            int valPerGr = (int)(pakData.m_NumItems / groups);
-            byte[] group = new byte[groupSize];
+			int groups = pakData.m_Data.Length / groupSize;
+			int valPerGr = (int)(pakData.m_NumItems / groups);
+			byte[] group = new byte[groupSize];
 
-            for (int g = 0; g < groups; g++)
-            {
-                Buffer.BlockCopy(pakData.m_Data, g * groupSize, group, 0, groupSize);
+			for (int g = 0; g < groups; g++)
+			{
+				Buffer.BlockCopy(pakData.m_Data, g * groupSize, group, 0, groupSize);
 
-                for (int v = 0; v < valPerGr; v++)
-                {
+				for (int v = 0; v < valPerGr; v++)
+				{
 
-                    unpackedVectors[v + g * valPerGr] = BitConverter.ToSingle(value, 0);
-                }
-            }
+					unpackedVectors[v + g * valPerGr] = BitConverter.ToSingle(value, 0);
+				}
+			}
 
-            //m_Data size is not necessarily a multiple of align, so there can be one extra group with fewer values
-            int lastBytes = pakData.m_Data.Length % groupSize;
-            int lastVal = (int)(pakData.m_NumItems - groups * valPerGr);
+			//m_Data size is not necessarily a multiple of align, so there can be one extra group with fewer values
+			int lastBytes = pakData.m_Data.Length % groupSize;
+			int lastVal = (int)(pakData.m_NumItems - groups * valPerGr);
 
-            if (lastBytes > 0)
-            {
-                Buffer.BlockCopy(pakData.m_Data, groups * groupSize, group, 0, lastBytes);
+			if (lastBytes > 0)
+			{
+				Buffer.BlockCopy(pakData.m_Data, groups * groupSize, group, 0, lastBytes);
 
-                for (int v = 0; v < lastVal; v++)
-                {
+				for (int v = 0; v < lastVal; v++)
+				{
 
-                    unpackedVectors[v + groups * valPerGr] = BitConverter.ToSingle(value, 0);
-                }
-            }*/
+					unpackedVectors[v + groups * valPerGr] = BitConverter.ToSingle(value, 0);
+				}
+			}*/
 
             return unpackedVectors;
         }
@@ -333,7 +333,6 @@ namespace Unity_Studio
             var version = MeshPD.sourceFile.version;
             a_Stream = MeshPD.sourceFile.a_Stream;
             a_Stream.Position = MeshPD.Offset;
-
             bool m_Use16BitIndices = true; //3.5.0 and newer always uses 16bit indices
             uint m_MeshCompression = 0;
 
@@ -388,6 +387,10 @@ namespace Unity_Studio
                     }
                     if (version[0] >= 3)
                     {
+                        if (version[0] > 2017 || (version[0] == 2017 && version[1] >= 3))//2017.3 and up
+                        {
+                            var baseVertex = a_Stream.ReadUInt32();
+                        }
                         m_SubMeshes[s].firstVertex = a_Stream.ReadUInt32();
                         m_SubMeshes[s].vertexCount = a_Stream.ReadUInt32();
                         a_Stream.Position += 24; //Axis-Aligned Bounding Box
@@ -440,7 +443,7 @@ namespace Unity_Studio
                     m_BindPose = new float[a_Stream.ReadInt32()][,];
                     for (int i = 0; i < m_BindPose.Length; i++)
                     {
-                        m_BindPose[i] = new float[4, 4] {
+                        m_BindPose[i] = new[,] {
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
@@ -466,7 +469,10 @@ namespace Unity_Studio
                         bool m_KeepIndices = a_Stream.ReadBoolean();
                     }
                     a_Stream.AlignStream(4);
-
+                    if (version[0] > 2017 || (version[0] == 2017 && version[1] >= 3))//2017.3 and up
+                    {
+                        var m_IndexFormat = a_Stream.ReadInt32();
+                    }
                     int m_IndexBuffer_size = a_Stream.ReadInt32();
 
                     if (m_Use16BitIndices)
@@ -500,18 +506,18 @@ namespace Unity_Studio
                         for (int i = 0; i < 4; i++) { m_Skin[s][i].boneIndex = a_Stream.ReadInt32(); }
 
                         /*m_Skin[s] = new Dictionary<int, float>();
-                        float[] weights = new float[4] { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() };
-                        for (int i = 0; i < 4; i++)
-                        {
-                            int boneIndex = a_Stream.ReadInt32();
-                            m_Skin[s][boneIndex] = weights[i];
-                        }*/
+						float[] weights = new float[4] { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() };
+						for (int i = 0; i < 4; i++)
+						{
+							int boneIndex = a_Stream.ReadInt32();
+							m_Skin[s][boneIndex] = weights[i];
+						}*/
                     }
 
                     m_BindPose = new float[a_Stream.ReadInt32()][,];
                     for (int i = 0; i < m_BindPose.Length; i++)
                     {
-                        m_BindPose[i] = new float[4, 4] {
+                        m_BindPose[i] = new[,] {
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
@@ -562,12 +568,12 @@ namespace Unity_Studio
                         for (int i = 0; i < 4; i++) { m_Skin[s][i].boneIndex = a_Stream.ReadInt32(); }
 
                         /*m_Skin[s] = new Dictionary<int, float>();
-                        float[] weights = new float[4] { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() };
-                        for (int i = 0; i < 4; i++)
-                        {
-                            int boneIndex = a_Stream.ReadInt32();
-                            m_Skin[s][boneIndex] = weights[i];
-                        }*/
+						float[] weights = new float[4] { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() };
+						for (int i = 0; i < 4; i++)
+						{
+							int boneIndex = a_Stream.ReadInt32();
+							m_Skin[s][boneIndex] = weights[i];
+						}*/
                     }
 
 
@@ -576,7 +582,7 @@ namespace Unity_Studio
                         m_BindPose = new float[a_Stream.ReadInt32()][,];
                         for (int i = 0; i < m_BindPose.Length; i++)
                         {
-                            m_BindPose[i] = new float[4, 4] {
+                            m_BindPose[i] = new[,] {
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
                         { a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle(), a_Stream.ReadSingle() },
@@ -677,10 +683,10 @@ namespace Unity_Studio
                                 }
 
                                 /*var absoluteOffset = a_Stream.Position + 4 + m_Streams[s].offset;
-                                if ((absoluteOffset % m_Streams[s].stride) != 0)
-                                {
-                                    m_Streams[s].offset += m_Streams[s].stride - (int)(absoluteOffset % m_Streams[s].stride);
-                                }*/
+								if ((absoluteOffset % m_Streams[s].stride) != 0)
+								{
+									m_Streams[s].offset += m_Streams[s].stride - (int)(absoluteOffset % m_Streams[s].stride);
+								}*/
                             }
                         }
                     }
@@ -713,18 +719,18 @@ namespace Unity_Studio
                                         componentByteSize = 4 / (int)Math.Pow(2, m_Channel.format);
 
                                         /*switch (m_Channel.format)
-                                        {
-                                            case 0: //32bit
-                                                valueBufferSize = 4;
-                                                break;
-                                            case 1: //16bit
-                                                valueBufferSize = 2;
-                                                break;
-                                            case 2: //8bit
-                                                valueBufferSize = 1;
-                                                m_Channel.dimension = 4;//in older versions this is 1, as in 1 color with 4 components
-                                                break;
-                                        }*/
+										{
+											case 0: //32bit
+												valueBufferSize = 4;
+												break;
+											case 1: //16bit
+												valueBufferSize = 2;
+												break;
+											case 2: //8bit
+												valueBufferSize = 1;
+												m_Channel.dimension = 4;//in older versions this is 1, as in 1 color with 4 components
+												break;
+										}*/
 
                                         componentBytes = new byte[componentByteSize];
                                         componentsArray = new float[m_VertexCount * m_Channel.dimension];
@@ -1077,8 +1083,7 @@ namespace Unity_Studio
                     m_BoneIndices.m_BitSize = a_Stream.ReadByte();
                     a_Stream.Position += 3; //4 byte alignment
 
-                    //how the hell does this work??
-                    if (m_BoneIndices.m_NumItems > 0 && m_BoneIndices.m_NumItems == m_Weights.m_NumItems && (bool)Properties.Settings.Default["exportDeformers"])
+                    if (m_BoneIndices.m_NumItems > 0 && (bool)Properties.Settings.Default["exportDeformers"])
                     {
                         uint[] m_Weights_Unpacked = UnpackBitVector(m_Weights);
                         int bitmax = 0;
@@ -1086,18 +1091,73 @@ namespace Unity_Studio
 
                         uint[] m_BoneIndices_Unpacked = UnpackBitVector(m_BoneIndices);
 
-                        m_Skin = new List<BoneInfluence>[m_BoneIndices.m_NumItems / 4];
+                        m_Skin = new List<BoneInfluence>[m_VertexCount];
                         for (int s = 0; s < m_Skin.Length; s++)
                         {
-                            m_Skin[s] = new List<BoneInfluence>();
-                            for (int i = 0; i < 4; i++)
+                            m_Skin[s] = new List<BoneInfluence>(4);
+                        }
+
+                        int inflCount = m_Weights.m_NumItems;
+                        int vertIndex = 0;
+                        int weightIndex = 0;
+                        int bonesIndex = 0;
+                        for (weightIndex = 0; weightIndex < inflCount; vertIndex++)
+                        {
+                            int inflSum = 0;
+                            int j;
+                            for (j = 0; j < 4; j++)
                             {
-                                m_Skin[s].Add(new BoneInfluence()
+                                int curWeight = 0;
+                                if (j == 3)
                                 {
-                                    weight = (float)((double)m_Weights_Unpacked[s * 4 + i] / bitmax),
-                                    boneIndex = (int)m_BoneIndices_Unpacked[s * 4 + i]
-                                });
+                                    curWeight = 31 - inflSum;
+                                }
+                                else
+                                {
+                                    curWeight = (int)m_Weights_Unpacked[weightIndex];
+                                    weightIndex++;
+                                    inflSum += curWeight;
+                                }
+                                double curWeightDouble = (double)curWeight;
+                                float realCurWeight = (float)(curWeightDouble / bitmax);
+
+                                int boneIndex = (int)m_BoneIndices_Unpacked[bonesIndex];
+                                bonesIndex++;
+                                if (boneIndex < 0)
+                                {
+                                    throw new Exception($"Invalid bone index {boneIndex}");
+                                }
+                                BoneInfluence boneInfl = new BoneInfluence()
+                                {
+                                    weight = realCurWeight,
+                                    boneIndex = boneIndex,
+                                };
+                                m_Skin[vertIndex].Add(boneInfl);
+
+                                if (inflSum == 31)
+                                {
+                                    break;
+                                }
+                                if (inflSum > 31)
+                                {
+                                    throw new Exception("Influence sum " + inflSum + " greater than 31");
+                                }
                             }
+                            for (; j < 4; j++)
+                            {
+                                BoneInfluence boneInfl = new BoneInfluence()
+                                {
+                                    weight = 0.0f,
+                                    boneIndex = 0,
+                                };
+                                m_Skin[vertIndex].Add(boneInfl);
+                            }
+                        }
+
+                        bool isFine = vertIndex == m_VertexCount;
+                        if (!isFine)
+                        {
+                            throw new Exception("Vertecies aint equals");
                         }
                     }
                     #endregion
@@ -1226,9 +1286,8 @@ namespace Unity_Studio
             }
             else
             {
-                if (m_Name != "") { MeshPD.Text = m_Name; }
-                else { MeshPD.Text = MeshPD.TypeString + " #" + MeshPD.uniqueID; }
-                MeshPD.SubItems.AddRange(new[] { MeshPD.TypeString, MeshPD.Size.ToString() });
+                MeshPD.extension = ".obj";
+                MeshPD.Text = m_Name;
             }
         }
     }
